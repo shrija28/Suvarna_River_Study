@@ -1,0 +1,35 @@
+html,
+body {
+    margin: 0;
+    padding: 0;
+    width: 100%;
+    height: 100%;
+    overflow: hidden;
+    font-family: "Segoe UI", sans-serif;
+}
+
+#map {
+    width: 100%;
+    height: 100vh;
+}
+
+
+/* Layer Control */
+
+.leaflet-control-layers {
+    border-radius: 8px;
+}
+
+
+/* Draw Toolbar */
+
+.leaflet-draw-toolbar a {
+    background: white;
+}
+
+
+/* Zoom Buttons */
+
+.leaflet-control-zoom a {
+    font-size: 18px;
+}
