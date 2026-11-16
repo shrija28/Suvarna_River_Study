@@ -1,0 +1,59 @@
+import os
+import sys
+
+# Ensure GUI attaches to interactive user desktop on Windows
+if sys.platform == "win32":
+    try:
+        import ctypes
+        user32 = ctypes.windll.user32
+        GENERIC_ALL = 0x10000000
+        hwinsta = user32.OpenWindowStationW("WinSta0", False, GENERIC_ALL)
+        if hwinsta:
+            user32.SetProcessWindowStation(hwinsta)
+        hdesk = user32.OpenDesktopW("Default", 0, False, GENERIC_ALL)
+        if hdesk:
+            user32.SetThreadDesktop(hdesk)
+    except Exception:
+        pass
+
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+
+from PySide6.QtWidgets import (
+    QApplication,
+    QMainWindow,
+    QStackedWidget,
+)
+from PySide6.QtWebEngineCore import QWebEngineProfile
+from pages.home import HomePage
+from pages.result import ResultPage
+
+
+class MainWindow(QMainWindow):
+    def __init__(self):
+        super().__init__()
+
+        self.setWindowTitle("River Path Deviation Prediction System")
+        self.resize(1600, 900)
+
+        self.stack = QStackedWidget()
+
+        self.home_page = HomePage(self.stack)
+        self.result_page = ResultPage(self.stack)
+
+        self.stack.addWidget(self.home_page)
+        self.stack.addWidget(self.result_page)
+
+        self.setCentralWidget(self.stack)
+
+
+def main():
+    app = QApplication.instance() or QApplication(sys.argv)
+    window = MainWindow()
+    window.showMaximized()
+    window.raise_()
+    window.activateWindow()
+    return app.exec()
+
+
+if __name__ == "__main__":
+    sys.exit(main())

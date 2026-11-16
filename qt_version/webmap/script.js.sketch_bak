@@ -1,0 +1,438 @@
+// ============================================================================
+// Suvarna River Interactive Map - OpenStreetMap + Multi-Layer Leaflet Engine
+// Study Area: Suvarna (Swarna) River Estuary near Kodi Bengre, Udupi, Karnataka
+// Theme: Dark Emerald GIS
+// ============================================================================
+
+console.log("Initializing Suvarna River Dark Emerald GIS Map Engine...");
+
+window.bridge = null;
+
+// Initialize Qt WebChannel Bridge if available
+if (typeof qt !== "undefined" && typeof QWebChannel !== "undefined") {
+    new QWebChannel(qt.webChannelTransport, function(channel) {
+        window.bridge = channel.objects.bridge;
+        console.log("Qt WebChannel Bridge connected:", window.bridge);
+        if (window.bridge && typeof window.bridge.setMapStatus === "function") {
+            window.bridge.setMapStatus("Map Ready");
+        }
+        if (window.bridge && typeof window.bridge.setMapModeName === "function") {
+            window.bridge.setMapModeName("OpenStreetMap Standard");
+        }
+    });
+} else {
+    console.log("QWebChannel not yet available or running in standalone browser");
+}
+
+// Safety check for Leaflet library
+if (typeof L === "undefined") {
+    console.error("Leaflet library is undefined. Ensure internet connectivity or local assets.");
+    var banner = document.getElementById("offline-banner");
+    if (banner) banner.style.display = "block";
+} else {
+    initMap();
+}
+
+function initMap() {
+    // ========================================================================
+    // 1. Map Initialization
+    // Center: Suvarna (Swarna) River Estuary at Kodi Bengre, Udupi, Karnataka
+    // Lat: 13.4380 N, Lon: 74.6980 E, Zoom: 13
+    // ========================================================================
+    const STUDY_AREA_CENTER = [13.4380, 74.6980];
+    const INITIAL_ZOOM = 13;
+
+    const map = L.map("map", {
+        center: STUDY_AREA_CENTER,
+        zoom: INITIAL_ZOOM,
+        minZoom: 5,
+        maxZoom: 19,
+        zoomControl: true
+    });
+
+    window.leafletMap = map;
+
+    // ========================================================================
+    // 2. Base Tile Layers (Map, Satellite, Hybrid, Terrain)
+    // ========================================================================
+
+    // 1. OpenStreetMap Standard (Map)
+    const osmStandard = L.tileLayer(
+        "https://tile.openstreetmap.org/{z}/{x}/{y}.png", {
+            maxZoom: 19,
+            attribution: '&copy; <a href="https://www.openstreetmap.org/copyright" target="_blank">OpenStreetMap</a> contributors'
+        }
+    );
+
+    // 2. Esri World Imagery (Satellite)
+    const esriSatellite = L.tileLayer(
+        "https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}", {
+            maxZoom: 19,
+            attribution: 'Tiles &copy; Esri &mdash; Source: Esri, i-cubed, USDA, USGS, AEX, GeoEye, Getmapping, Aerogrid, IGN, IGP, UPR-EGP, GIS Community'
+        }
+    );
+
+    // Hybrid Reference Overlay (Boundaries & Places labels over Satellite)
+    const esriLabels = L.tileLayer(
+        "https://server.arcgisonline.com/ArcGIS/rest/services/Reference/World_Boundaries_and_Places/MapServer/tile/{z}/{y}/{x}", {
+            maxZoom: 19,
+            pane: "overlayPane"
+        }
+    );
+
+    // 3. OpenTopoMap (Terrain)
+    const openTopo = L.tileLayer(
+        "https://{s}.tile.opentopomap.org/{z}/{x}/{y}.png", {
+            maxZoom: 17,
+            attribution: 'Map data: &copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors, SRTM | Style: &copy; <a href="https://opentopomap.org">OpenTopoMap</a>'
+        }
+    );
+
+    // Active Base Layer state
+    let activeBase = osmStandard;
+    let isHybrid = false;
+    osmStandard.addTo(map);
+
+    // Function to dynamically switch map modes from PySide6 or JS
+    window.setMapMode = function(mode) {
+        map.removeLayer(osmStandard);
+        map.removeLayer(esriSatellite);
+        map.removeLayer(openTopo);
+        if (map.hasLayer(esriLabels)) {
+            map.removeLayer(esriLabels);
+        }
+
+        let modeDisplayName = "OpenStreetMap Standard";
+
+        if (mode === "satellite") {
+            esriSatellite.addTo(map);
+            activeBase = esriSatellite;
+            modeDisplayName = "Satellite Imagery (Esri)";
+        } else if (mode === "hybrid") {
+            esriSatellite.addTo(map);
+            esriLabels.addTo(map);
+            activeBase = esriSatellite;
+            modeDisplayName = "Hybrid (Satellite + Labels)";
+        } else if (mode === "terrain") {
+            openTopo.addTo(map);
+            activeBase = openTopo;
+            modeDisplayName = "OpenTopoMap (Terrain)";
+        } else {
+            // Default "map"
+            osmStandard.addTo(map);
+            activeBase = osmStandard;
+            modeDisplayName = "OpenStreetMap Standard";
+        }
+
+        console.log("Map Mode changed to:", mode, `(${modeDisplayName})`);
+
+        if (window.bridge && typeof window.bridge.setMapModeName === "function") {
+            window.bridge.setMapModeName(modeDisplayName);
+        }
+    };
+
+    // Offline / Tile Error Handling
+    function onTileError() {
+        const banner = document.getElementById("offline-banner");
+        if (banner && banner.style.display !== "block") {
+            banner.style.display = "block";
+            const msg = document.getElementById("offline-msg");
+            if (msg) {
+                msg.innerText = "Notice: Some map tiles could not be downloaded. Please verify internet connection.";
+            }
+        }
+        if (window.bridge && typeof window.bridge.setMapStatus === "function") {
+            window.bridge.setMapStatus("Warning: Tile Loading Failed");
+        }
+    }
+
+    osmStandard.on("tileerror", onTileError);
+    esriSatellite.on("tileerror", onTileError);
+
+    // ========================================================================
+    // 3. Scale Bar
+    // ========================================================================
+    L.control.scale({
+        metric: true,
+        imperial: false,
+        position: "bottomleft"
+    }).addTo(map);
+
+    // ========================================================================
+    // 4. Study Area Marker: "Suvarna River Study Area"
+    // ========================================================================
+    const markerLayerGroup = L.layerGroup().addTo(map);
+
+    const studyMarker = L.marker(STUDY_AREA_CENTER, {
+        title: "Suvarna River Study Area",
+        riseOnHover: true
+    });
+
+    const markerPopupContent = `
+        <div style="font-family: inherit; min-width: 220px;">
+            <h4 style="margin: 0 0 6px 0; color: #74E6B0; font-size: 15px; border-bottom: 1px solid #24574B; padding-bottom: 4px;">
+                Suvarna River Study Area
+            </h4>
+            <div style="font-size: 12px; margin-bottom: 4px; color: #F4F1E8;">
+                <b>Location:</b> Kodi Bengre Estuary, Udupi, Karnataka
+            </div>
+            <div style="font-size: 12px; margin-bottom: 4px; color: #74E6B0;">
+                <b>Coordinates:</b> 13.4380&deg; N, 74.6980&deg; E
+            </div>
+            <div style="font-size: 11px; margin-bottom: 5px; color: #A8C4B7;">
+                <b>Estuary Context:</b> Suvarna &amp; Sita confluence entering Arabian Sea
+            </div>
+            <div style="font-size: 11px; color: #C8E889; font-weight: 500;">
+                Hybrid AI River Path Deviation Analysis
+            </div>
+        </div>
+    `;
+
+    studyMarker.bindPopup(markerPopupContent, {
+        className: "study-area-popup",
+        closeButton: true
+    });
+
+    studyMarker.bindTooltip("Suvarna River Study Area (Kodi Bengre)", {
+        direction: "top",
+        offset: [0, -10]
+    });
+
+    markerLayerGroup.addLayer(studyMarker);
+    studyMarker.openPopup();
+
+    // ========================================================================
+    // 5. Area of Interest (AOI) Drawing Toolbar (Preserved Existing Feature)
+    // ========================================================================
+    const drawnItems = new L.FeatureGroup();
+    map.addLayer(drawnItems);
+
+    if (typeof L.Control.Draw !== "undefined") {
+        const drawControl = new L.Control.Draw({
+            position: "topleft",
+            draw: {
+                rectangle: {
+                    shapeOptions: {
+                        color: "#74E6B0",
+                        weight: 2,
+                        fillColor: "#00BFA5",
+                        fillOpacity: 0.25
+                    }
+                },
+                polygon: false,
+                polyline: false,
+                marker: false,
+                circle: false,
+                circlemarker: false
+            },
+            edit: {
+                featureGroup: drawnItems,
+                remove: true
+            }
+        });
+
+        map.addControl(drawControl);
+
+        // AOI Rectangle Created Event
+        map.on(L.Draw.Event.CREATED, function(event) {
+            console.log("AOI Rectangle created");
+
+            // Remove previous AOI
+            drawnItems.clearLayers();
+
+            // Add new AOI
+            const layer = event.layer;
+            drawnItems.addLayer(layer);
+
+            // Get AOI bounds
+            const bounds = layer.getBounds();
+            const north = bounds.getNorth();
+            const south = bounds.getSouth();
+            const east = bounds.getEast();
+            const west = bounds.getWest();
+
+            console.log("========== AOI Coordinates ==========");
+            console.log("North Latitude :", north);
+            console.log("South Latitude :", south);
+            console.log("East Longitude :", east);
+            console.log("West Longitude :", west);
+            console.log("=====================================");
+
+            // Send AOI coordinates to PySide6 via Bridge
+            if (window.bridge && typeof window.bridge.updateAOI === "function") {
+                window.bridge.updateAOI(north, south, east, west);
+                console.log("Successfully sent AOI to Python backend");
+            } else {
+                console.warn("Qt Bridge object not available to receive AOI");
+            }
+        });
+
+        map.on(L.Draw.Event.DELETED, function() {
+            console.log("AOI Rectangle removed");
+            if (window.bridge && typeof window.bridge.clearAOI === "function") {
+                window.bridge.clearAOI();
+            }
+        });
+    }
+
+    // ========================================================================
+    // 6. Future Compatibility Layer Groups
+    // ========================================================================
+    const historicalBoundariesGroup = L.layerGroup();
+    const deviationPredictionsGroup = L.layerGroup();
+    const customOverlaysGroup = L.layerGroup();
+
+    // ========================================================================
+    // 7. Layer Switcher Control
+    // ========================================================================
+    const baseLayers = {
+        "OpenStreetMap (Standard)": osmStandard,
+        "Satellite Imagery (Esri)": esriSatellite,
+        "Topography (OpenTopoMap)": openTopo
+    };
+
+    const overlayLayers = {
+        "Study Area Marker": markerLayerGroup,
+        "Drawn AOI Boundary": drawnItems,
+        "Historical River Boundaries": historicalBoundariesGroup,
+        "River Deviation Predictions": deviationPredictionsGroup,
+        "Custom Overlays": customOverlaysGroup
+    };
+
+    L.control.layers(baseLayers, overlayLayers, {
+        position: "topright",
+        collapsed: true
+    }).addTo(map);
+
+    // ========================================================================
+    // 8. Mouse Coordinates HUD & Python Bridge Dispatch
+    // ========================================================================
+    const CoordHUD = L.Control.extend({
+        onAdd: function() {
+            const div = L.DomUtil.create("div", "coord-hud");
+            div.id = "coord-hud-display";
+            div.innerHTML = "Lat: 13.438000 | Lon: 74.698000";
+            return div;
+        }
+    });
+    new CoordHUD({ position: "bottomright" }).addTo(map);
+
+    map.on("mousemove", function(e) {
+        const latStr = e.latlng.lat.toFixed(6);
+        const lngStr = e.latlng.lng.toFixed(6);
+
+        // Update document title
+        document.title = "Latitude : " + latStr + " | Longitude : " + lngStr;
+
+        // Update on-screen HUD
+        const hud = document.getElementById("coord-hud-display");
+        if (hud) {
+            hud.innerHTML = `Lat: ${latStr} | Lon: ${lngStr}`;
+        }
+
+        // Send live cursor coordinates to Python bridge for bottom info card
+        if (window.bridge && typeof window.bridge.updateCursorCoords === "function") {
+            window.bridge.updateCursorCoords(e.latlng.lat, e.latlng.lng);
+        }
+    });
+
+    // ========================================================================
+    // 9. Window Resize Handling (Ensures full responsiveness)
+    // ========================================================================
+    function resizeMap() {
+        if (map) {
+            map.invalidateSize();
+        }
+    }
+
+    window.addEventListener("resize", resizeMap);
+    setTimeout(resizeMap, 300);
+    setTimeout(resizeMap, 800);
+
+    // ========================================================================
+    // 10. Future Compatibility API (Callable from Python or JS)
+    // ========================================================================
+
+    window.focusStudyArea = function() {
+        map.setView(STUDY_AREA_CENTER, INITIAL_ZOOM);
+        studyMarker.openPopup();
+    };
+
+    window.setHistoricalBoundary = function(geojsonData, styleOptions) {
+        historicalBoundariesGroup.clearLayers();
+        if (!geojsonData) return;
+
+        const defaultStyle = {
+            color: "#E9B866",
+            weight: 2.5,
+            opacity: 0.9,
+            fillColor: "#E9B866",
+            fillOpacity: 0.25
+        };
+
+        const layer = L.geoJSON(geojsonData, {
+            style: styleOptions || defaultStyle,
+            onEachFeature: function(feature, l) {
+                if (feature.properties && feature.properties.year) {
+                    l.bindPopup(`<b>Historical River Boundary:</b> ${feature.properties.year}`);
+                }
+            }
+        });
+
+        historicalBoundariesGroup.addLayer(layer);
+        if (!map.hasLayer(historicalBoundariesGroup)) {
+            map.addLayer(historicalBoundariesGroup);
+        }
+        try {
+            map.fitBounds(layer.getBounds(), { padding: [20, 20] });
+        } catch (e) {
+            console.log("Could not fit bounds:", e);
+        }
+    };
+
+    window.setRiverDeviationPrediction = function(geojsonData, styleOptions) {
+        deviationPredictionsGroup.clearLayers();
+        if (!geojsonData) return;
+
+        const defaultStyle = {
+            color: "#74E6B0",
+            weight: 3,
+            opacity: 0.95,
+            fillColor: "#00BFA5",
+            fillOpacity: 0.35
+        };
+
+        const layer = L.geoJSON(geojsonData, {
+            style: styleOptions || defaultStyle,
+            onEachFeature: function(feature, l) {
+                const props = feature.properties || {};
+                const year = props.prediction_year || props.year || "Future";
+                l.bindPopup(`<b>Predicted River Path:</b> Year ${year}`);
+            }
+        });
+
+        deviationPredictionsGroup.addLayer(layer);
+        if (!map.hasLayer(deviationPredictionsGroup)) {
+            map.addLayer(deviationPredictionsGroup);
+        }
+        try {
+            map.fitBounds(layer.getBounds(), { padding: [20, 20] });
+        } catch (e) {
+            console.log("Could not fit bounds:", e);
+        }
+    };
+
+    window.clearOverlayLayer = function(target) {
+        if (target === "historical") historicalBoundariesGroup.clearLayers();
+        else if (target === "prediction") deviationPredictionsGroup.clearLayers();
+        else if (target === "custom") customOverlaysGroup.clearLayers();
+        else if (target === "aoi") drawnItems.clearLayers();
+        else {
+            historicalBoundariesGroup.clearLayers();
+            deviationPredictionsGroup.clearLayers();
+            customOverlaysGroup.clearLayers();
+        }
+    };
+
+    console.log("Suvarna River Web Map Engine successfully initialized.");
+}

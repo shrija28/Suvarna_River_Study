@@ -1,0 +1,666 @@
+import os
+from PySide6.QtCore import Qt, QUrl, QObject, Slot
+from PySide6.QtWebChannel import QWebChannel
+from PySide6.QtWidgets import (
+    QWidget,
+    QLabel,
+    QFrame,
+    QVBoxLayout,
+    QHBoxLayout,
+    QGridLayout,
+    QPushButton,
+    QComboBox,
+    QLineEdit,
+    QSizePolicy,
+)
+from PySide6.QtWebEngineWidgets import QWebEngineView
+from PySide6.QtWebEngineCore import (
+    QWebEnginePage,
+    QWebEngineSettings,
+)
+
+from theme import (
+    BG_DARK,
+    DARK_EMERALD,
+    PANEL_GREEN,
+    PANEL_SURFACE,
+    BORDER_COLOR,
+    BORDER_SUBTLE,
+    TEAL,
+    MINT,
+    SOFT_LIME,
+    WARM_IVORY,
+    MUTED_SAGE,
+    AMBER,
+    INPUT_BG,
+)
+from icons import get_icon, get_pixmap
+
+
+# ============================================================================
+# WebEngine Page Console Logging
+# ============================================================================
+class WebPage(QWebEnginePage):
+    def javaScriptConsoleMessage(self, level, message, line, source):
+        print(f"JS [{line}] {message}")
+
+
+# ============================================================================
+# QWebChannel Bridge
+# ============================================================================
+class Bridge(QObject):
+    def __init__(self, home):
+        super().__init__()
+        self.home = home
+
+    @Slot(float, float, float, float)
+    def updateAOI(self, north, south, east, west):
+        self.home.set_aoi_coords(north, south, east, west)
+
+    @Slot(str)
+    def setMapStatus(self, status):
+        self.home.set_map_status(status)
+
+    @Slot(str)
+    def setMapModeName(self, mode_name):
+        self.home.set_map_mode_name(mode_name)
+
+    @Slot(float, float)
+    def updateCursorCoords(self, lat, lon):
+        self.home.update_cursor_coords(lat, lon)
+
+    @Slot()
+    def clearAOI(self):
+        self.home.clear_aoi()
+
+
+# ============================================================================
+# Home Page Widget
+# ============================================================================
+class HomePage(QWidget):
+    def __init__(self, stack, main_window=None):
+        super().__init__()
+        self.stack = stack
+        self.main_window = main_window
+        self.active_mode = "map"
+        self.build_ui()
+
+    def build_ui(self):
+        main_layout = QHBoxLayout(self)
+        main_layout.setContentsMargins(14, 10, 14, 10)
+        main_layout.setSpacing(14)
+
+        # ====================================================================
+        # LEFT/CENTER: Interactive Map Panel & Bottom Information Cards
+        # ====================================================================
+        left_container = QWidget()
+        left_layout = QVBoxLayout(left_container)
+        left_layout.setContentsMargins(0, 0, 0, 0)
+        left_layout.setSpacing(10)
+
+        # --------------------------------------------------------------------
+        # Map Panel Header (Title, Subtitle, and Compact Map Style Controls)
+        # --------------------------------------------------------------------
+        map_header = QFrame()
+        map_header.setStyleSheet(f"""
+            QFrame {{
+                background-color: {DARK_EMERALD};
+                border: 1px solid {BORDER_COLOR};
+                border-radius: 8px;
+                padding: 4px 10px;
+            }}
+        """)
+        header_layout = QHBoxLayout(map_header)
+        header_layout.setContentsMargins(8, 6, 8, 6)
+
+        # Title & Subtitle
+        title_box = QVBoxLayout()
+        title_box.setSpacing(2)
+
+        title_lbl = QLabel("Interactive Suvarna River Map")
+        title_lbl.setStyleSheet(f"""
+            font-size: 16px;
+            font-weight: 700;
+            color: {WARM_IVORY};
+            letter-spacing: 0.3px;
+        """)
+
+        subtitle_lbl = QLabel(
+            "Explore the study area, select region of interest, and analyze river characteristics"
+        )
+        subtitle_lbl.setStyleSheet(f"""
+            font-size: 11px;
+            color: {MUTED_SAGE};
+        """)
+
+        title_box.addWidget(title_lbl)
+        title_box.addWidget(subtitle_lbl)
+        header_layout.addLayout(title_box)
+
+        header_layout.addStretch()
+
+        # Compact Map-Style Controls: Map, Satellite, Hybrid, Terrain
+        mode_btn_box = QHBoxLayout()
+        mode_btn_box.setSpacing(4)
+
+        self.mode_buttons = {}
+        modes = [
+            ("map", "Map"),
+            ("satellite", "Satellite"),
+            ("hybrid", "Hybrid"),
+            ("terrain", "Terrain"),
+        ]
+
+        for mode_key, mode_label in modes:
+            btn = QPushButton(mode_label)
+            btn.setCheckable(True)
+            btn.setCursor(Qt.PointingHandCursor)
+            btn.setFixedHeight(28)
+            btn.clicked.connect(lambda checked=False, m=mode_key: self.set_map_mode(m))
+            self.mode_buttons[mode_key] = btn
+            mode_btn_box.addWidget(btn)
+
+        self.update_mode_button_styles("map")
+        header_layout.addLayout(mode_btn_box)
+
+        left_layout.addWidget(map_header)
+
+        # --------------------------------------------------------------------
+        # Embedded Web Map View (QWebEngineView)
+        # --------------------------------------------------------------------
+        map_frame = QFrame()
+        map_frame.setStyleSheet(f"""
+            QFrame {{
+                background-color: {BG_DARK};
+                border: 1px solid {BORDER_COLOR};
+                border-radius: 8px;
+            }}
+        """)
+        map_frame_layout = QVBoxLayout(map_frame)
+        map_frame_layout.setContentsMargins(2, 2, 2, 2)
+
+        self.browser = QWebEngineView()
+        self.browser.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Expanding)
+
+        page = WebPage(self.browser)
+        self.browser.setPage(page)
+
+        self.channel = QWebChannel(self.browser.page())
+        self.bridge = Bridge(self)
+        self.channel.registerObject("bridge", self.bridge)
+        page.setWebChannel(self.channel)
+
+        settings = self.browser.settings()
+        settings.setAttribute(QWebEngineSettings.LocalContentCanAccessRemoteUrls, True)
+        settings.setAttribute(QWebEngineSettings.LocalContentCanAccessFileUrls, True)
+        settings.setAttribute(QWebEngineSettings.JavascriptEnabled, True)
+
+        map_path = os.path.abspath(
+            os.path.join(os.path.dirname(__file__), "..", "webmap", "index.html")
+        )
+        self.browser.load(QUrl.fromLocalFile(map_path))
+        self.browser.loadFinished.connect(self.on_map_load_finished)
+
+        map_frame_layout.addWidget(self.browser)
+        left_layout.addWidget(map_frame, 1)
+
+        # --------------------------------------------------------------------
+        # Bottom Information Cards (Section 3.E)
+        # Four balanced cards: Location, Coordinates, Map Source, Area Type
+        # --------------------------------------------------------------------
+        cards_row = QHBoxLayout()
+        cards_row.setSpacing(10)
+
+        # Card 1: Location
+        c1, self.card_loc_val, self.card_loc_sub = self.create_info_card(
+            icon_name="location",
+            icon_color=TEAL,
+            title="LOCATION",
+            primary="Suvarna River Estuary",
+            secondary="Kodi Bengre, Udupi, Karnataka",
+        )
+        cards_row.addWidget(c1)
+
+        # Card 2: Coordinates
+        c2, self.card_coords_val, self.card_coords_sub = self.create_info_card(
+            icon_name="coordinates",
+            icon_color=MINT,
+            title="COORDINATES",
+            primary="13.4380° N, 74.6980° E",
+            secondary="WGS84 / EPSG:4326 (Estuary Mouth)",
+        )
+        cards_row.addWidget(c2)
+
+        # Card 3: Map Source
+        c3, self.card_source_val, self.card_source_sub = self.create_info_card(
+            icon_name="map_source",
+            icon_color=SOFT_LIME,
+            title="MAP PROVIDER",
+            primary="OpenStreetMap Standard",
+            secondary="Attribution: © OpenStreetMap",
+        )
+        cards_row.addWidget(c3)
+
+        # Card 4: Area Type
+        c4, self.card_type_val, self.card_type_sub = self.create_info_card(
+            icon_name="area_type",
+            icon_color=AMBER,
+            title="ZONE CLASSIFICATION",
+            primary="River Mouth & Coastal Spit",
+            secondary="Estuarine wetlands & coastal zone",
+        )
+        cards_row.addWidget(c4)
+
+        left_layout.addLayout(cards_row)
+
+        main_layout.addWidget(left_container, 7)
+
+        # ====================================================================
+        # RIGHT PANEL: Analysis Parameters (Section 3.D)
+        # ====================================================================
+        right_panel = QFrame()
+        right_panel.setFixedWidth(340)
+        right_panel.setStyleSheet(f"""
+            QFrame {{
+                background-color: {PANEL_SURFACE};
+                border: 1px solid {BORDER_COLOR};
+                border-radius: 10px;
+            }}
+        """)
+
+        right_layout = QVBoxLayout(right_panel)
+        right_layout.setContentsMargins(16, 16, 16, 16)
+        right_layout.setSpacing(12)
+
+        # Panel Header
+        panel_header_layout = QHBoxLayout()
+        panel_title_box = QVBoxLayout()
+        panel_title_box.setSpacing(2)
+
+        panel_title = QLabel("Analysis Parameters")
+        panel_title.setStyleSheet(f"""
+            font-size: 16px;
+            font-weight: 700;
+            color: {WARM_IVORY};
+        """)
+
+        panel_sub = QLabel("Model configuration & spatial extent")
+        panel_sub.setStyleSheet(f"""
+            font-size: 11px;
+            color: {MUTED_SAGE};
+        """)
+        panel_title_box.addWidget(panel_title)
+        panel_title_box.addWidget(panel_sub)
+        panel_header_layout.addLayout(panel_title_box)
+
+        # Spatial ML Badge
+        badge = QLabel("SPATIAL ML")
+        badge.setStyleSheet(f"""
+            background-color: {DARK_EMERALD};
+            color: {MINT};
+            font-size: 10px;
+            font-weight: 700;
+            padding: 3px 7px;
+            border-radius: 4px;
+            border: 1px solid {BORDER_COLOR};
+        """)
+        panel_header_layout.addWidget(badge)
+        right_layout.addLayout(panel_header_layout)
+
+        # Divider line
+        divider = QFrame()
+        divider.setFrameShape(QFrame.HLine)
+        divider.setStyleSheet(f"background-color: {BORDER_SUBTLE}; border: none; height: 1px;")
+        right_layout.addWidget(divider)
+
+        # Section: Year Selection
+        temporal_lbl = QLabel("TEMPORAL CONFIGURATION")
+        temporal_lbl.setStyleSheet(f"font-size: 10px; font-weight: 700; color: {TEAL}; letter-spacing: 0.5px;")
+        right_layout.addWidget(temporal_lbl)
+
+        # Base Year
+        by_label = QLabel("Base Year (Historical Reference)")
+        by_label.setStyleSheet(f"font-size: 12px; color: {MUTED_SAGE};")
+        right_layout.addWidget(by_label)
+
+        self.base_year = QComboBox()
+        self.base_year.addItems([str(y) for y in range(1989, 2027)])
+        self.base_year.setCurrentText("1989")
+        right_layout.addWidget(self.base_year)
+
+        # Prediction Year
+        py_label = QLabel("Prediction Target Year")
+        py_label.setStyleSheet(f"font-size: 12px; color: {MUTED_SAGE};")
+        right_layout.addWidget(py_label)
+
+        self.prediction_year = QComboBox()
+        right_layout.addWidget(self.prediction_year)
+
+        self.update_prediction_years()
+        self.base_year.currentIndexChanged.connect(lambda: self.update_prediction_years())
+
+        right_layout.addSpacing(6)
+
+        # Section: Study Area Coordinates (AOI)
+        aoi_header_box = QHBoxLayout()
+        aoi_lbl = QLabel("STUDY AREA COORDINATES (AOI)")
+        aoi_lbl.setStyleSheet(f"font-size: 10px; font-weight: 700; color: {MINT}; letter-spacing: 0.5px;")
+        aoi_header_box.addWidget(aoi_lbl)
+        aoi_header_box.addStretch()
+
+        aoi_badge = QLabel("Draw Rectangle")
+        aoi_badge.setStyleSheet(f"font-size: 10px; color: {MUTED_SAGE}; font-style: italic;")
+        aoi_header_box.addWidget(aoi_badge)
+        right_layout.addLayout(aoi_header_box)
+
+        # Two-Column Grid for Coordinates (North, South, East, West)
+        grid = QGridLayout()
+        grid.setHorizontalSpacing(10)
+        grid.setVerticalSpacing(6)
+
+        # Column 1: North & South
+        grid.addWidget(self.create_field_label("North Latitude (°N)"), 0, 0)
+        self.north_lat = QLineEdit()
+        self.north_lat.setReadOnly(True)
+        self.north_lat.setPlaceholderText("13.480000")
+        grid.addWidget(self.north_lat, 1, 0)
+
+        grid.addWidget(self.create_field_label("South Latitude (°N)"), 2, 0)
+        self.south_lat = QLineEdit()
+        self.south_lat.setReadOnly(True)
+        self.south_lat.setPlaceholderText("13.400000")
+        grid.addWidget(self.south_lat, 3, 0)
+
+        # Column 2: East & West
+        grid.addWidget(self.create_field_label("East Longitude (°E)"), 0, 1)
+        self.east_lon = QLineEdit()
+        self.east_lon.setReadOnly(True)
+        self.east_lon.setPlaceholderText("74.740000")
+        grid.addWidget(self.east_lon, 1, 1)
+
+        grid.addWidget(self.create_field_label("West Longitude (°E)"), 2, 1)
+        self.west_lon = QLineEdit()
+        self.west_lon.setReadOnly(True)
+        self.west_lon.setPlaceholderText("74.660000")
+        grid.addWidget(self.west_lon, 3, 1)
+
+        right_layout.addLayout(grid)
+
+        # AOI Action Buttons (Focus Study Area & Clear AOI)
+        aoi_btn_row = QHBoxLayout()
+        aoi_btn_row.setSpacing(8)
+
+        self.btn_focus = QPushButton("Focus Estuary")
+        self.btn_focus.setIcon(get_icon("crosshair", color=MINT, size=16))
+        self.btn_focus.setCursor(Qt.PointingHandCursor)
+        self.btn_focus.setStyleSheet(f"""
+            QPushButton {{
+                background-color: {DARK_EMERALD};
+                color: {MINT};
+                border: 1px solid {BORDER_COLOR};
+                font-size: 11px;
+                padding: 6px;
+                border-radius: 6px;
+            }}
+            QPushButton:hover {{
+                background-color: {PANEL_GREEN};
+                border-color: {MINT};
+            }}
+        """)
+        self.btn_focus.clicked.connect(self.center_study_area)
+        aoi_btn_row.addWidget(self.btn_focus)
+
+        self.btn_clear_aoi = QPushButton("Clear AOI")
+        self.btn_clear_aoi.setIcon(get_icon("refresh", color=MUTED_SAGE, size=16))
+        self.btn_clear_aoi.setCursor(Qt.PointingHandCursor)
+        self.btn_clear_aoi.setStyleSheet(f"""
+            QPushButton {{
+                background-color: {DARK_EMERALD};
+                color: {MUTED_SAGE};
+                border: 1px solid {BORDER_COLOR};
+                font-size: 11px;
+                padding: 6px;
+                border-radius: 6px;
+            }}
+            QPushButton:hover {{
+                background-color: {PANEL_GREEN};
+                color: {WARM_IVORY};
+            }}
+        """)
+        self.btn_clear_aoi.clicked.connect(self.clear_aoi_clicked)
+        aoi_btn_row.addWidget(self.btn_clear_aoi)
+
+        right_layout.addLayout(aoi_btn_row)
+
+        right_layout.addStretch()
+
+        # Status note above button
+        self.aoi_status_note = QLabel("Use top-left map toolbar to draw rectangle AOI")
+        self.aoi_status_note.setStyleSheet(f"""
+            font-size: 11px;
+            color: {MUTED_SAGE};
+            font-style: italic;
+            text-align: center;
+        """)
+        self.aoi_status_note.setAlignment(Qt.AlignCenter)
+        right_layout.addWidget(self.aoi_status_note)
+
+        # Next Button (Prominent Mint/Teal Button with Arrow)
+        self.next_btn = QPushButton("Next Step: Analysis  →")
+        self.next_btn.setMinimumHeight(44)
+        self.next_btn.setCursor(Qt.PointingHandCursor)
+        self.next_btn.setStyleSheet(f"""
+            QPushButton {{
+                background: qlineargradient(x1:0, y1:0, x2:1, y2:0,
+                    stop:0 {TEAL}, stop:1 {MINT});
+                color: {BG_DARK};
+                font-size: 14px;
+                font-weight: 700;
+                border: none;
+                border-radius: 8px;
+                padding: 10px;
+                letter-spacing: 0.4px;
+            }}
+            QPushButton:hover {{
+                background: qlineargradient(x1:0, y1:0, x2:1, y2:0,
+                    stop:0 {MINT}, stop:1 {SOFT_LIME});
+                box-shadow: 0 4px 14px rgba(116, 230, 176, 0.4);
+            }}
+            QPushButton:pressed {{
+                background: {TEAL};
+            }}
+        """)
+        self.next_btn.clicked.connect(self.go_to_result)
+        right_layout.addWidget(self.next_btn)
+
+        main_layout.addWidget(right_panel, 3)
+
+    # ========================================================================
+    # Helper: Create Info Card
+    # ========================================================================
+    def create_info_card(self, icon_name, icon_color, title, primary, secondary):
+        card = QFrame()
+        card.setFixedHeight(68)
+        card.setStyleSheet(f"""
+            QFrame {{
+                background-color: {DARK_EMERALD};
+                border: 1px solid {BORDER_COLOR};
+                border-radius: 8px;
+                padding: 6px 10px;
+            }}
+        """)
+        layout = QHBoxLayout(card)
+        layout.setContentsMargins(8, 6, 8, 6)
+        layout.setSpacing(10)
+
+        # Icon box
+        icon_lbl = QLabel()
+        icon_lbl.setPixmap(get_pixmap(icon_name, color=icon_color, size=24))
+        icon_lbl.setFixedSize(30, 30)
+        icon_lbl.setAlignment(Qt.AlignCenter)
+        layout.addWidget(icon_lbl)
+
+        # Text box
+        t_box = QVBoxLayout()
+        t_box.setSpacing(1)
+
+        t_lbl = QLabel(title)
+        t_lbl.setStyleSheet(f"""
+            font-size: 9px;
+            font-weight: 700;
+            color: {icon_color};
+            letter-spacing: 0.6px;
+        """)
+
+        p_lbl = QLabel(primary)
+        p_lbl.setStyleSheet(f"""
+            font-size: 12px;
+            font-weight: 600;
+            color: {WARM_IVORY};
+        """)
+
+        s_lbl = QLabel(secondary)
+        s_lbl.setStyleSheet(f"""
+            font-size: 10px;
+            color: {MUTED_SAGE};
+        """)
+
+        t_box.addWidget(t_lbl)
+        t_box.addWidget(p_lbl)
+        t_box.addWidget(s_lbl)
+        layout.addLayout(t_box)
+
+        return card, p_lbl, s_lbl
+
+    def create_field_label(self, text):
+        lbl = QLabel(text)
+        lbl.setStyleSheet(f"font-size: 11px; color: {MUTED_SAGE}; font-weight: 500;")
+        return lbl
+
+    # ========================================================================
+    # Map Mode Controls
+    # ========================================================================
+    def set_map_mode(self, mode):
+        self.active_mode = mode
+        self.update_mode_button_styles(mode)
+        self.browser.page().runJavaScript(f"if (window.setMapMode) window.setMapMode('{mode}');")
+
+    def update_mode_button_styles(self, active_mode):
+        for mode_key, btn in self.mode_buttons.items():
+            is_active = (mode_key == active_mode)
+            btn.setChecked(is_active)
+            if is_active:
+                btn.setStyleSheet(f"""
+                    QPushButton {{
+                        background-color: {PANEL_GREEN};
+                        color: {MINT};
+                        border: 1px solid {MINT};
+                        border-radius: 4px;
+                        font-weight: 700;
+                        font-size: 11px;
+                        padding: 3px 10px;
+                    }}
+                """)
+            else:
+                btn.setStyleSheet(f"""
+                    QPushButton {{
+                        background-color: {DARK_EMERALD};
+                        color: {MUTED_SAGE};
+                        border: 1px solid {BORDER_SUBTLE};
+                        border-radius: 4px;
+                        font-weight: 500;
+                        font-size: 11px;
+                        padding: 3px 10px;
+                    }}
+                    QPushButton:hover {{
+                        color: {WARM_IVORY};
+                        border-color: {BORDER_COLOR};
+                    }}
+                """)
+
+    # ========================================================================
+    # Slot Callbacks & Data Updating
+    # ========================================================================
+    def set_aoi_coords(self, north, south, east, west):
+        print(f"AOI updated: N={north:.6f}, S={south:.6f}, E={east:.6f}, W={west:.6f}")
+        self.north_lat.setText(f"{north:.6f}")
+        self.south_lat.setText(f"{south:.6f}")
+        self.east_lon.setText(f"{east:.6f}")
+        self.west_lon.setText(f"{west:.6f}")
+
+        self.card_coords_val.setText(f"{south:.4f}°N to {north:.4f}°N")
+        self.card_coords_sub.setText(f"{west:.4f}°E to {east:.4f}°E (AOI Extent)")
+        self.aoi_status_note.setText("✓ Area of Interest captured successfully")
+        self.aoi_status_note.setStyleSheet(f"font-size: 11px; color: {MINT}; font-weight: 600;")
+
+        if self.main_window and hasattr(self.main_window, "update_status"):
+            self.main_window.update_status(
+                status_text="AOI Extent Defined",
+                readiness="Ready for ML Analysis"
+            )
+
+    def set_map_status(self, status):
+        print(f"Map status: {status}")
+        if self.main_window and hasattr(self.main_window, "update_status"):
+            self.main_window.update_status(status_text=status)
+
+    def set_map_mode_name(self, mode_name):
+        self.card_source_val.setText(mode_name)
+        if self.main_window and hasattr(self.main_window, "update_status"):
+            self.main_window.update_status(mode_text=f"Mode: {mode_name}")
+
+    def update_cursor_coords(self, lat, lon):
+        if not self.north_lat.text():
+            self.card_coords_val.setText(f"{lat:.4f}° N, {lon:.4f}° E")
+
+    def clear_aoi(self):
+        self.north_lat.clear()
+        self.south_lat.clear()
+        self.east_lon.clear()
+        self.west_lon.clear()
+        self.card_coords_val.setText("13.4380° N, 74.6980° E")
+        self.card_coords_sub.setText("WGS84 / EPSG:4326 (Estuary Mouth)")
+        self.aoi_status_note.setText("Use top-left map toolbar to draw rectangle AOI")
+        self.aoi_status_note.setStyleSheet(f"font-size: 11px; color: {MUTED_SAGE}; font-style: italic;")
+        if self.main_window and hasattr(self.main_window, "update_status"):
+            self.main_window.update_status(
+                status_text="Map Ready",
+                readiness="Ready for AOI selection"
+            )
+
+    def clear_aoi_clicked(self):
+        self.browser.page().runJavaScript("if (window.clearOverlayLayer) window.clearOverlayLayer('aoi');")
+        self.clear_aoi()
+
+    def on_map_load_finished(self, ok):
+        print("HTML Loaded :", ok)
+        if ok:
+            if self.main_window and hasattr(self.main_window, "update_status"):
+                self.main_window.update_status(
+                    status_text="Map Ready (Suvarna River Estuary)",
+                    readiness="Ready for AOI selection"
+                )
+        else:
+            if self.main_window and hasattr(self.main_window, "update_status"):
+                self.main_window.update_status(
+                    status_text="Map Load Warning (Check internet)",
+                    readiness="Offline Mode"
+                )
+
+    def update_prediction_years(self):
+        self.prediction_year.clear()
+        base_year = int(self.base_year.currentText())
+        for year in range(base_year + 1, 2027):
+            self.prediction_year.addItem(str(year))
+
+    def center_study_area(self):
+        self.browser.page().runJavaScript(
+            "if (typeof window.focusStudyArea === 'function') window.focusStudyArea();"
+        )
+
+    def go_to_result(self):
+        print("Navigating to Results & Visualization")
+        if self.main_window and hasattr(self.main_window, "navigate_to_page"):
+            self.main_window.navigate_to_page(3)  # Index 3: Results & Visualization
+        else:
+            self.stack.setCurrentIndex(1)

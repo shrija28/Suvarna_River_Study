@@ -5,31 +5,194 @@ body {
     width: 100%;
     height: 100%;
     overflow: hidden;
-    font-family: "Segoe UI", sans-serif;
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Arial, sans-serif;
+    background-color: #181A1C;
 }
 
 #map {
     width: 100%;
-    height: 100vh;
+    height: 100%;
+    background-color: #181A1C;
 }
 
-
-/* Layer Control */
-
-.leaflet-control-layers {
-    border-radius: 8px;
+/* Offline & Error Notification Banner */
+#offline-banner {
+    display: none;
+    position: absolute;
+    top: 14px;
+    left: 50%;
+    transform: translateX(-50%);
+    background: rgba(36, 39, 44, 0.96);
+    color: #F7F5F0;
+    border: 1px solid #C86D51;
+    padding: 8px 18px;
+    border-radius: 6px;
+    box-shadow: 0 4px 16px rgba(0, 0, 0, 0.5);
+    z-index: 9999;
+    font-size: 13px;
+    font-weight: 500;
+    text-align: center;
+    max-width: 85%;
+    line-height: 1.4;
 }
 
+#offline-banner button {
+    margin-left: 10px;
+    padding: 3px 10px;
+    background: #C86D51;
+    color: #F7F5F0;
+    border: none;
+    border-radius: 4px;
+    cursor: pointer;
+    font-size: 12px;
+    font-weight: bold;
+}
 
-/* Draw Toolbar */
+#offline-banner button:hover {
+    background: #D97757;
+}
+
+/* Coordinates HUD overlay */
+.coord-hud {
+    background: rgba(26, 28, 30, 0.90) !important;
+    padding: 5px 12px !important;
+    border-radius: 6px !important;
+    border: 1px solid #383C42 !important;
+    font-size: 11px !important;
+    font-family: "Consolas", monospace !important;
+    color: #F7F5F0 !important;
+    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.4) !important;
+    pointer-events: none;
+}
+
+/* Leaflet UI Customizations - Charcoal & Copper */
+.leaflet-bar {
+    border: 1px solid #383C42 !important;
+    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.4) !important;
+    border-radius: 6px !important;
+    overflow: hidden;
+}
+
+.leaflet-bar a {
+    background-color: #222528 !important;
+    color: #F7F5F0 !important;
+    border-bottom: 1px solid #383C42 !important;
+    transition: background 0.15s ease, color 0.15s ease;
+}
+
+.leaflet-bar a:hover {
+    background-color: #2D3136 !important;
+    color: #C86D51 !important;
+}
 
 .leaflet-draw-toolbar a {
-    background: white;
+    background-color: #222528 !important;
+    border-color: #383C42 !important;
 }
 
+.leaflet-draw-toolbar a:hover {
+    background-color: #2D3136 !important;
+}
 
-/* Zoom Buttons */
+/* Layer Control */
+.leaflet-control-layers {
+    background: rgba(34, 37, 40, 0.94) !important;
+    backdrop-filter: blur(8px);
+    border: 1px solid #383C42 !important;
+    border-radius: 8px !important;
+    box-shadow: 0 4px 14px rgba(0, 0, 0, 0.4) !important;
+    color: #F7F5F0 !important;
+    font-size: 12px !important;
+    padding: 8px 12px !important;
+}
 
-.leaflet-control-zoom a {
-    font-size: 18px;
+.leaflet-control-layers-toggle {
+    background-color: #222528 !important;
+    border-radius: 6px;
+}
+
+.leaflet-control-layers label {
+    color: #F7F5F0 !important;
+    cursor: pointer;
+    margin: 3px 0;
+}
+
+.leaflet-control-layers-separator {
+    border-top: 1px solid #383C42 !important;
+}
+
+/* Scale Control */
+.leaflet-control-scale-line {
+    background: rgba(34, 37, 40, 0.85) !important;
+    border: 1px solid #383C42 !important;
+    border-top: none !important;
+    color: #9EA4AA !important;
+    font-size: 11px !important;
+    box-shadow: 0 2px 6px rgba(0, 0, 0, 0.3) !important;
+}
+
+/* Attribution */
+.leaflet-container .leaflet-control-attribution {
+    background: rgba(24, 26, 28, 0.85) !important;
+    color: #9EA4AA !important;
+    font-size: 10px !important;
+    border-top-left-radius: 6px;
+    padding: 2px 8px !important;
+}
+
+.leaflet-control-attribution a {
+    color: #C86D51 !important;
+    text-decoration: none;
+}
+
+.leaflet-control-attribution a:hover {
+    text-decoration: underline;
+}
+
+/* Study Area Marker Popup */
+.study-area-popup .leaflet-popup-content-wrapper {
+    background: #222528 !important;
+    color: #F7F5F0 !important;
+    border: 1px solid #383C42 !important;
+    border-top: 3px solid #C86D51 !important;
+    border-radius: 8px !important;
+    box-shadow: 0 6px 20px rgba(0, 0, 0, 0.6) !important;
+}
+
+.study-area-popup .leaflet-popup-tip {
+    background: #222528 !important;
+    border: 1px solid #383C42 !important;
+}
+
+.study-area-popup .leaflet-popup-content {
+    margin: 12px 14px;
+    line-height: 1.45;
+}
+
+.study-area-popup h4 {
+    margin: 0 0 6px 0;
+    color: #C86D51;
+    font-size: 15px;
+    font-weight: 700;
+}
+
+.leaflet-container a.leaflet-popup-close-button {
+    color: #9EA4AA !important;
+    padding: 6px 8px 0 0 !important;
+}
+
+.leaflet-container a.leaflet-popup-close-button:hover {
+    color: #C86D51 !important;
+}
+
+/* Tooltip */
+.leaflet-tooltip {
+    background: rgba(34, 37, 40, 0.95) !important;
+    color: #F7F5F0 !important;
+    border: 1px solid #383C42 !important;
+    border-radius: 4px !important;
+    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.3) !important;
+    font-size: 12px !important;
+    font-weight: 500;
+    padding: 4px 8px !important;
 }

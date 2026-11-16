@@ -1,12 +1,198 @@
-html, body {
+html,
+body {
     margin: 0;
     padding: 0;
     width: 100%;
     height: 100%;
     overflow: hidden;
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Arial, sans-serif;
+    background-color: #031B18;
 }
 
 #map {
     width: 100%;
     height: 100%;
+    background-color: #031B18;
+}
+
+/* Offline & Error Notification Banner */
+#offline-banner {
+    display: none;
+    position: absolute;
+    top: 14px;
+    left: 50%;
+    transform: translateX(-50%);
+    background: rgba(8, 43, 38, 0.95);
+    color: #F4F1E8;
+    border: 1px solid #E9B866;
+    padding: 9px 18px;
+    border-radius: 6px;
+    box-shadow: 0 4px 16px rgba(0, 0, 0, 0.5);
+    z-index: 9999;
+    font-size: 13px;
+    font-weight: 500;
+    text-align: center;
+    max-width: 85%;
+    line-height: 1.4;
+}
+
+#offline-banner button {
+    margin-left: 10px;
+    padding: 3px 10px;
+    background: #00BFA5;
+    color: #031B18;
+    border: none;
+    border-radius: 4px;
+    cursor: pointer;
+    font-size: 12px;
+    font-weight: bold;
+}
+
+#offline-banner button:hover {
+    background: #74E6B0;
+}
+
+/* Coordinates HUD overlay */
+.coord-hud {
+    background: rgba(8, 43, 38, 0.88) !important;
+    padding: 5px 12px !important;
+    border-radius: 6px !important;
+    border: 1px solid #24574B !important;
+    font-size: 11px !important;
+    font-family: "Consolas", monospace !important;
+    color: #74E6B0 !important;
+    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.4) !important;
+    pointer-events: none;
+}
+
+/* Leaflet UI Customizations - Dark Emerald Theme */
+.leaflet-bar {
+    border: 1px solid #24574B !important;
+    box-shadow: 0 3px 10px rgba(0, 0, 0, 0.4) !important;
+    border-radius: 6px !important;
+    overflow: hidden;
+}
+
+.leaflet-bar a {
+    background-color: #082B26 !important;
+    color: #F4F1E8 !important;
+    border-bottom: 1px solid #24574B !important;
+    transition: background 0.15s ease, color 0.15s ease;
+}
+
+.leaflet-bar a:hover {
+    background-color: #103B32 !important;
+    color: #74E6B0 !important;
+}
+
+.leaflet-draw-toolbar a {
+    background-color: #082B26 !important;
+    border-color: #24574B !important;
+}
+
+.leaflet-draw-toolbar a:hover {
+    background-color: #103B32 !important;
+}
+
+/* Layer Control */
+.leaflet-control-layers {
+    background: rgba(8, 43, 38, 0.92) !important;
+    backdrop-filter: blur(8px);
+    border: 1px solid #24574B !important;
+    border-radius: 8px !important;
+    box-shadow: 0 4px 14px rgba(0, 0, 0, 0.4) !important;
+    color: #F4F1E8 !important;
+    font-size: 12px !important;
+    padding: 8px 12px !important;
+}
+
+.leaflet-control-layers-toggle {
+    background-color: #082B26 !important;
+    border-radius: 6px;
+}
+
+.leaflet-control-layers label {
+    color: #F4F1E8 !important;
+    cursor: pointer;
+    margin: 3px 0;
+}
+
+.leaflet-control-layers-separator {
+    border-top: 1px solid #24574B !important;
+}
+
+/* Scale Control */
+.leaflet-control-scale-line {
+    background: rgba(8, 43, 38, 0.85) !important;
+    border: 1px solid #24574B !important;
+    border-top: none !important;
+    color: #A8C4B7 !important;
+    font-size: 11px !important;
+    box-shadow: 0 2px 6px rgba(0, 0, 0, 0.3) !important;
+}
+
+/* Attribution */
+.leaflet-container .leaflet-control-attribution {
+    background: rgba(3, 27, 24, 0.85) !important;
+    color: #A8C4B7 !important;
+    font-size: 10px !important;
+    border-top-left-radius: 6px;
+    padding: 2px 8px !important;
+}
+
+.leaflet-control-attribution a {
+    color: #74E6B0 !important;
+    text-decoration: none;
+}
+
+.leaflet-control-attribution a:hover {
+    text-decoration: underline;
+}
+
+/* Study Area Marker Popup */
+.study-area-popup .leaflet-popup-content-wrapper {
+    background: #082B26 !important;
+    color: #F4F1E8 !important;
+    border: 1px solid #24574B !important;
+    border-top: 3px solid #00BFA5 !important;
+    border-radius: 8px !important;
+    box-shadow: 0 6px 20px rgba(0, 0, 0, 0.6) !important;
+}
+
+.study-area-popup .leaflet-popup-tip {
+    background: #082B26 !important;
+    border: 1px solid #24574B !important;
+}
+
+.study-area-popup .leaflet-popup-content {
+    margin: 12px 14px;
+    line-height: 1.45;
+}
+
+.study-area-popup h4 {
+    margin: 0 0 6px 0;
+    color: #74E6B0;
+    font-size: 15px;
+    font-weight: 700;
+}
+
+.leaflet-container a.leaflet-popup-close-button {
+    color: #A8C4B7 !important;
+    padding: 6px 8px 0 0 !important;
+}
+
+.leaflet-container a.leaflet-popup-close-button:hover {
+    color: #74E6B0 !important;
+}
+
+/* Tooltip */
+.leaflet-tooltip {
+    background: rgba(8, 43, 38, 0.95) !important;
+    color: #F4F1E8 !important;
+    border: 1px solid #24574B !important;
+    border-radius: 4px !important;
+    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.3) !important;
+    font-size: 12px !important;
+    font-weight: 500;
+    padding: 4px 8px !important;
 }

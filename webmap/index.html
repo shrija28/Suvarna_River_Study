@@ -2,32 +2,72 @@
 <html lang="en">
 
 <head>
-
     <meta charset="UTF-8">
-    <title>Suvarna River Interactive Map</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Estuarine Mouth Dynamics - Interactive Map</title>
 
-    <!-- Leaflet CSS -->
-    <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+    <!-- Local Leaflet CSS (with CDN fallback) -->
+    <link rel="stylesheet" href="vendor/leaflet/leaflet.css" onerror="this.onerror=null;this.href='https://unpkg.com/leaflet@1.9.4/dist/leaflet.css';" />
 
-    <!-- Leaflet Draw CSS -->
-    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/leaflet.draw/1.0.4/leaflet.draw.css" />
+    <!-- Local Leaflet Draw CSS (with CDN fallback) -->
+    <link rel="stylesheet" href="vendor/leaflet-draw/leaflet.draw.css" onerror="this.onerror=null;this.href='https://cdnjs.cloudflare.com/ajax/libs/leaflet.draw/1.0.4/leaflet.draw.css';" />
 
-    <!-- Your CSS -->
+    <!-- Custom CSS -->
     <link rel="stylesheet" href="style.css">
-
 </head>
 
 <body>
 
+    <!-- Offline / Error Notification Banner (hidden by default) -->
+    <div id="offline-banner" style="display: none;">
+        <span id="offline-msg">Notice: Map tiles could not be loaded. Please check your internet connection.</span>
+        <button onclick="window.location.reload()">Retry</button>
+        <button onclick="document.getElementById('offline-banner').style.display='none'" style="background: transparent; color: #F4F1E8; border: 1px solid #24574B; margin-left: 6px;">Dismiss</button>
+    </div>
+
+    <!-- Map Container -->
     <div id="map"></div>
 
-    <!-- Leaflet JS -->
-    <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+    <!-- Local Leaflet JS (with fallback to CDN if missing) -->
+    <script src="vendor/leaflet/leaflet.js"></script>
+    <script>
+        if (typeof L === 'undefined') {
+            document.write('<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"><\/script>');
+        }
+    </script>
 
-    <!-- Leaflet Draw JS -->
-    <script src="https://cdnjs.cloudflare.com/ajax/libs/leaflet.draw/1.0.4/leaflet.draw.js"></script>
+    <!-- Local Leaflet Draw JS (with fallback to CDN if missing) -->
+    <script src="vendor/leaflet-draw/leaflet.draw.js"></script>
+    <script>
+        if (typeof L !== 'undefined' && typeof L.Control.Draw === 'undefined') {
+            document.write('<script src="https://cdnjs.cloudflare.com/ajax/libs/leaflet.draw/1.0.4/leaflet.draw.js"><\/script>');
+        }
+    </script>
 
-    <!-- Your JS -->
+    <!-- Qt WebChannel Integration (Local file first, QRC fallback) -->
+    <script src="qwebchannel.js"></script>
+    <script>
+        if (typeof QWebChannel === 'undefined') {
+            document.write('<script src="qrc:///qtwebchannel/qwebchannel.js"><\/script>');
+        }
+    </script>
+
+    <!-- Script loading sanity check -->
+    <script>
+        if (typeof L === 'undefined') {
+            var banner = document.getElementById('offline-banner');
+            if (banner) {
+                banner.style.display = 'block';
+                var msg = document.getElementById('offline-msg');
+                if (msg) {
+                    msg.innerText = "Leaflet map library could not be loaded. Please check your internet connection and click Retry.";
+                }
+            }
+            console.error("Leaflet library failed to load. Ensure vendor files are present or internet connection is active.");
+        }
+    </script>
+
+    <!-- Main Map Script -->
     <script src="script.js"></script>
 
 </body>

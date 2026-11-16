@@ -1,0 +1,507 @@
+import os
+import sys
+
+# Ensure GUI attaches to interactive user desktop on Windows
+if sys.platform == "win32":
+    try:
+        import ctypes
+        user32 = ctypes.windll.user32
+        GENERIC_ALL = 0x10000000
+        hwinsta = user32.OpenWindowStationW("WinSta0", False, GENERIC_ALL)
+        if hwinsta:
+            user32.SetProcessWindowStation(hwinsta)
+        hdesk = user32.OpenDesktopW("Default", 0, False, GENERIC_ALL)
+        if hdesk:
+            user32.SetThreadDesktop(hdesk)
+    except Exception:
+        pass
+
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+
+from PySide6.QtCore import Qt, QSize
+from PySide6.QtGui import QPixmap, QPainter, QBrush, QPainterPath
+from PySide6.QtWidgets import (
+    QApplication,
+    QMainWindow,
+    QWidget,
+    QLabel,
+    QFrame,
+    QVBoxLayout,
+    QHBoxLayout,
+    QStackedWidget,
+    QPushButton,
+    QSizePolicy,
+)
+
+from theme import (
+    APP_STYLESHEET,
+    BG_DARK,
+    DARK_EMERALD,
+    PANEL_GREEN,
+    PANEL_SURFACE,
+    BORDER_COLOR,
+    BORDER_SUBTLE,
+    TEAL,
+    MINT,
+    SOFT_LIME,
+    WARM_IVORY,
+    MUTED_SAGE,
+    AMBER,
+)
+from icons import get_icon, get_pixmap
+from pages.home import HomePage
+from pages.processing import ProcessingPage
+from pages.prediction import PredictionPage
+from pages.result import ResultPage
+from pages.settings_page import SettingsPage
+from pages.about_page import AboutPage
+
+
+class NavButton(QPushButton):
+    """Custom sidebar navigation button with line icon, label, and sub-description."""
+    def __init__(self, icon_name, title, desc, page_index, on_click_callback):
+        super().__init__()
+        self.page_index = page_index
+        self.icon_name = icon_name
+        self.title_text = title
+        self.desc_text = desc
+        self.is_active = False
+
+        self.setCursor(Qt.PointingHandCursor)
+        self.setFixedHeight(54)
+
+        # Internal layout
+        layout = QHBoxLayout(self)
+        layout.setContentsMargins(12, 6, 12, 6)
+        layout.setSpacing(12)
+
+        # Active indicator strip (4px wide)
+        self.indicator = QFrame()
+        self.indicator.setFixedWidth(4)
+        self.indicator.setFixedHeight(34)
+        self.indicator.setStyleSheet(f"background-color: transparent; border-radius: 2px;")
+        layout.addWidget(self.indicator)
+
+        # Icon label
+        self.icon_lbl = QLabel()
+        self.icon_lbl.setFixedSize(22, 22)
+        layout.addWidget(self.icon_lbl)
+
+        # Text box
+        text_box = QVBoxLayout()
+        text_box.setSpacing(1)
+        text_box.setAlignment(Qt.AlignVCenter)
+
+        self.title_lbl = QLabel(title)
+        self.title_lbl.setStyleSheet(f"font-size: 13px; font-weight: 600; color: {WARM_IVORY};")
+
+        self.desc_lbl = QLabel(desc)
+        self.desc_lbl.setStyleSheet(f"font-size: 10px; color: {MUTED_SAGE};")
+
+        text_box.addWidget(self.title_lbl)
+        text_box.addWidget(self.desc_lbl)
+        layout.addLayout(text_box)
+        layout.addStretch()
+
+        self.clicked.connect(lambda: on_click_callback(self.page_index))
+        self.set_active(False)
+
+    def set_active(self, active: bool):
+        self.is_active = active
+        if active:
+            self.setStyleSheet(f"""
+                NavButton {{
+                    background-color: {PANEL_GREEN};
+                    border: 1px solid {BORDER_COLOR};
+                    border-radius: 8px;
+                }}
+            """)
+            self.indicator.setStyleSheet(f"background-color: {MINT}; border-radius: 2px;")
+            self.icon_lbl.setPixmap(get_pixmap(self.icon_name, color=MINT, size=20))
+            self.title_lbl.setStyleSheet(f"font-size: 13px; font-weight: 700; color: {MINT};")
+            self.desc_lbl.setStyleSheet(f"font-size: 10px; color: {WARM_IVORY};")
+        else:
+            self.setStyleSheet(f"""
+                NavButton {{
+                    background-color: transparent;
+                    border: 1px solid transparent;
+                    border-radius: 8px;
+                }}
+                NavButton:hover {{
+                    background-color: #0B2B24;
+                    border: 1px solid {BORDER_SUBTLE};
+                }}
+            """)
+            self.indicator.setStyleSheet("background-color: transparent;")
+            self.icon_lbl.setPixmap(get_pixmap(self.icon_name, color=MUTED_SAGE, size=20))
+            self.title_lbl.setStyleSheet(f"font-size: 13px; font-weight: 500; color: {WARM_IVORY};")
+            self.desc_lbl.setStyleSheet(f"font-size: 10px; color: {MUTED_SAGE};")
+
+
+class MainWindow(QMainWindow):
+    def __init__(self):
+        super().__init__()
+
+        self.setWindowTitle("Suvarna River - Path Deviation Prediction System")
+        self.resize(1600, 950)
+        self.setStyleSheet(APP_STYLESHEET)
+
+        # Main Root Widget
+        root_widget = QWidget()
+        root_layout = QVBoxLayout(root_widget)
+        root_layout.setContentsMargins(0, 0, 0, 0)
+        root_layout.setSpacing(0)
+
+        # --------------------------------------------------------------------
+        # Section 3.A: Top Branding Banner
+        # --------------------------------------------------------------------
+        self.banner = self.build_top_banner()
+        root_layout.addWidget(self.banner)
+
+        # --------------------------------------------------------------------
+        # Center Body (Sidebar + QStackedWidget Pages)
+        # --------------------------------------------------------------------
+        body_widget = QWidget()
+        body_layout = QHBoxLayout(body_widget)
+        body_layout.setContentsMargins(0, 0, 0, 0)
+        body_layout.setSpacing(0)
+
+        # Section 3.B: Left Navigation Sidebar
+        self.sidebar = self.build_sidebar()
+        body_layout.addWidget(self.sidebar)
+
+        # Central Stacked Pages
+        self.stack = QStackedWidget()
+        self.home_page = HomePage(self.stack, self)
+        self.processing_page = ProcessingPage(self.stack, self)
+        self.prediction_page = PredictionPage(self.stack, self)
+        self.result_page = ResultPage(self.stack, self)
+        self.settings_page = SettingsPage(self.stack, self)
+        self.about_page = AboutPage(self.stack, self)
+
+        self.stack.addWidget(self.home_page)        # 0
+        self.stack.addWidget(self.processing_page)  # 1
+        self.stack.addWidget(self.prediction_page)  # 2
+        self.stack.addWidget(self.result_page)      # 3
+        self.stack.addWidget(self.settings_page)    # 4
+        self.stack.addWidget(self.about_page)       # 5
+
+        body_layout.addWidget(self.stack, 1)
+        root_layout.addWidget(body_widget, 1)
+
+        # --------------------------------------------------------------------
+        # Section 3.F: Bottom Status Bar
+        # --------------------------------------------------------------------
+        self.status_bar = self.build_status_bar()
+        root_layout.addWidget(self.status_bar)
+
+        self.setCentralWidget(root_widget)
+
+        # Set default active navigation
+        self.navigate_to_page(0)
+
+    # ========================================================================
+    # Top Branding Banner
+    # ========================================================================
+    def build_top_banner(self) -> QFrame:
+        banner = QFrame()
+        banner.setFixedHeight(94)
+        banner.setStyleSheet(f"""
+            QFrame {{
+                background: qlineargradient(x1:0, y1:0, x2:1, y2:0,
+                    stop:0 #04211D, stop:0.5 #082F28, stop:1 #062621);
+                border-bottom: 1px solid {BORDER_COLOR};
+            }}
+        """)
+
+        banner_layout = QHBoxLayout(banner)
+        banner_layout.setContentsMargins(16, 8, 16, 8)
+        banner_layout.setSpacing(14)
+
+        # 1. River-and-Leaf Custom Logo
+        logo_label = QLabel()
+        logo_label.setFixedSize(56, 56)
+        logo_path = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "assets", "logo.png"))
+        if os.path.exists(logo_path):
+            src_pix = QPixmap(logo_path)
+            if not src_pix.isNull():
+                # Clip to smooth rounded rect
+                rounded_logo = QPixmap(56, 56)
+                rounded_logo.fill(Qt.transparent)
+                p = QPainter(rounded_logo)
+                p.setRenderHint(QPainter.Antialiasing)
+                path = QPainterPath()
+                path.addRoundedRect(0, 0, 56, 56, 12, 12)
+                p.setClipPath(path)
+                p.drawPixmap(0, 0, 56, 56, src_pix.scaled(56, 56, Qt.KeepAspectRatioByExpanding, Qt.SmoothTransformation))
+                p.end()
+                logo_label.setPixmap(rounded_logo)
+        banner_layout.addWidget(logo_label)
+
+        # 2. Title & Subtitle Branding
+        title_box = QVBoxLayout()
+        title_box.setSpacing(1)
+        title_box.setAlignment(Qt.AlignVCenter)
+
+        brand_title = QLabel("Suvarna River")
+        brand_title.setStyleSheet(f"""
+            font-size: 21px;
+            font-weight: 800;
+            color: {WARM_IVORY};
+            letter-spacing: 0.5px;
+        """)
+
+        brand_sub = QLabel("Path Deviation Prediction System")
+        brand_sub.setStyleSheet(f"""
+            font-size: 13px;
+            font-weight: 600;
+            color: {MINT};
+        """)
+
+        brand_labels = QLabel("Geospatial Analysis  |  Machine Learning  |  Sustainable Coastlines")
+        brand_labels.setStyleSheet(f"""
+            font-size: 11px;
+            color: {MUTED_SAGE};
+        """)
+
+        title_box.addWidget(brand_title)
+        title_box.addWidget(brand_sub)
+        title_box.addWidget(brand_labels)
+        banner_layout.addLayout(title_box)
+
+        banner_layout.addStretch()
+
+        # 3. Location Badge
+        loc_badge = QFrame()
+        loc_badge.setStyleSheet(f"""
+            QFrame {{
+                background-color: {DARK_EMERALD};
+                border: 1px solid {BORDER_COLOR};
+                border-radius: 20px;
+                padding: 4px 14px;
+            }}
+        """)
+        lb_layout = QHBoxLayout(loc_badge)
+        lb_layout.setContentsMargins(6, 2, 8, 2)
+        lb_layout.setSpacing(6)
+
+        pin_icon = QLabel()
+        pin_icon.setPixmap(get_pixmap("location", color=TEAL, size=16))
+        lb_layout.addWidget(pin_icon)
+
+        badge_text = QLabel("Kodi Bengre, Udupi, Karnataka, India")
+        badge_text.setStyleSheet(f"font-size: 12px; font-weight: 600; color: {WARM_IVORY};")
+        lb_layout.addWidget(badge_text)
+
+        banner_layout.addWidget(loc_badge)
+
+        # 4. Scenic River Estuary Panoramic Graphic
+        banner_img_lbl = QLabel()
+        banner_img_lbl.setFixedSize(190, 68)
+        banner_path = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "assets", "suvarna_banner.png"))
+        if os.path.exists(banner_path):
+            banner_pix = QPixmap(banner_path)
+            if not banner_pix.isNull():
+                styled_banner = QPixmap(190, 68)
+                styled_banner.fill(Qt.transparent)
+                bp = QPainter(styled_banner)
+                bp.setRenderHint(QPainter.Antialiasing)
+                bpath = QPainterPath()
+                bpath.addRoundedRect(0, 0, 190, 68, 8, 8)
+                bp.setClipPath(bpath)
+                bp.drawPixmap(0, 0, 190, 68, banner_pix.scaled(190, 68, Qt.KeepAspectRatioByExpanding, Qt.SmoothTransformation))
+                # Subtle border highlight
+                bp.setPen(BORDER_COLOR)
+                bp.drawRoundedRect(0, 0, 189, 67, 8, 8)
+                bp.end()
+                banner_img_lbl.setPixmap(styled_banner)
+        banner_layout.addWidget(banner_img_lbl)
+
+        return banner
+
+    # ========================================================================
+    # Left Navigation Sidebar
+    # ========================================================================
+    def build_sidebar(self) -> QFrame:
+        sidebar = QFrame()
+        sidebar.setFixedWidth(245)
+        sidebar.setStyleSheet(f"""
+            QFrame {{
+                background-color: {BG_DARK};
+                border-right: 1px solid {BORDER_SUBTLE};
+            }}
+        """)
+
+        layout = QVBoxLayout(sidebar)
+        layout.setContentsMargins(10, 14, 10, 14)
+        layout.setSpacing(6)
+
+        nav_title = QLabel("NAVIGATION")
+        nav_title.setStyleSheet(f"""
+            font-size: 10px;
+            font-weight: 700;
+            color: {MUTED_SAGE};
+            letter-spacing: 1px;
+            padding-left: 10px;
+            margin-bottom: 4px;
+        """)
+        layout.addWidget(nav_title)
+
+        # Sidebar Items
+        self.nav_buttons = []
+        nav_items = [
+            ("home", "Home", "Map & Study Area", 0),
+            ("data_processing", "Data Processing", "Satellite Data & Indices", 1),
+            ("analysis", "Analysis & Prediction", "River Path Deviation", 2),
+            ("results", "Results & Visualization", "LULC & Change Detection", 3),
+            ("settings", "Settings", "Parameters & Preferences", 4),
+            ("about", "About", "Project Information", 5),
+        ]
+
+        for icon_name, title, desc, idx in nav_items:
+            btn = NavButton(icon_name, title, desc, idx, self.navigate_to_page)
+            self.nav_buttons.append(btn)
+            layout.addWidget(btn)
+
+        layout.addStretch()
+
+        # Botanical & Conservation Accent Card
+        conservation_card = QFrame()
+        conservation_card.setStyleSheet(f"""
+            QFrame {{
+                background-color: {DARK_EMERALD};
+                border: 1px solid {BORDER_COLOR};
+                border-radius: 8px;
+                padding: 10px;
+            }}
+        """)
+        cc_l = QVBoxLayout(conservation_card)
+        cc_l.setSpacing(4)
+
+        cc_top = QHBoxLayout()
+        leaf_icon = QLabel()
+        leaf_icon.setPixmap(get_pixmap("leaf", color=MINT, size=16))
+        cc_top.addWidget(leaf_icon)
+        cc_title = QLabel("Coastal Ecosystem")
+        cc_title.setStyleSheet(f"font-size: 11px; font-weight: 700; color: {MINT};")
+        cc_top.addWidget(cc_title)
+        cc_top.addStretch()
+        cc_l.addLayout(cc_top)
+
+        cc_text = QLabel("Monitoring estuarine morphodynamics, sediment deviation, and mangrove conservation near Swarna estuary.")
+        cc_text.setStyleSheet(f"font-size: 10px; color: {MUTED_SAGE}; line-height: 1.3;")
+        cc_text.setWordWrap(True)
+        cc_l.addWidget(cc_text)
+
+        layout.addWidget(conservation_card)
+
+        return sidebar
+
+    # ========================================================================
+    # Bottom Status Bar (Section 3.F)
+    # ========================================================================
+    def build_status_bar(self) -> QFrame:
+        bar = QFrame()
+        bar.setFixedHeight(32)
+        bar.setStyleSheet(f"""
+            QFrame {{
+                background-color: #041E1A;
+                border-top: 1px solid {BORDER_SUBTLE};
+                padding: 0 14px;
+            }}
+        """)
+
+        layout = QHBoxLayout(bar)
+        layout.setContentsMargins(14, 0, 14, 0)
+        layout.setSpacing(16)
+
+        # Map status dot & text
+        status_box = QHBoxLayout()
+        status_box.setSpacing(6)
+        self.status_dot = QLabel("●")
+        self.status_dot.setStyleSheet(f"color: {MINT}; font-size: 12px;")
+        self.status_map_text = QLabel("Map Ready (Suvarna River Estuary)")
+        self.status_map_text.setStyleSheet(f"font-size: 11px; font-weight: 600; color: {WARM_IVORY};")
+        status_box.addWidget(self.status_dot)
+        status_box.addWidget(self.status_map_text)
+        layout.addLayout(status_box)
+
+        # Separator
+        layout.addWidget(self.create_status_sep())
+
+        # Map Mode Pill
+        self.status_mode_pill = QLabel("Mode: OpenStreetMap Standard")
+        self.status_mode_pill.setStyleSheet(f"""
+            background-color: {DARK_EMERALD};
+            color: {MUTED_SAGE};
+            font-size: 11px;
+            padding: 2px 8px;
+            border-radius: 4px;
+            border: 1px solid {BORDER_SUBTLE};
+        """)
+        layout.addWidget(self.status_mode_pill)
+
+        # Separator
+        layout.addWidget(self.create_status_sep())
+
+        # Study Area
+        self.status_study_area = QLabel("Study Area: Kodi Bengre, Udupi")
+        self.status_study_area.setStyleSheet(f"font-size: 11px; color: {MUTED_SAGE};")
+        layout.addWidget(self.status_study_area)
+
+        layout.addStretch()
+
+        # Analysis Readiness
+        self.status_readiness = QLabel("Analysis: Ready for AOI selection")
+        self.status_readiness.setStyleSheet(f"font-size: 11px; font-weight: 600; color: {MINT};")
+        layout.addWidget(self.status_readiness)
+
+        # Separator
+        layout.addWidget(self.create_status_sep())
+
+        # Data-loaded status
+        self.status_data = QLabel("Data: Landsat Multi-Spectral (1989-2026)")
+        self.status_data.setStyleSheet(f"font-size: 11px; color: {MUTED_SAGE};")
+        layout.addWidget(self.status_data)
+
+        return bar
+
+    def create_status_sep(self):
+        sep = QLabel("|")
+        sep.setStyleSheet(f"color: {BORDER_COLOR}; font-size: 11px;")
+        return sep
+
+    # ========================================================================
+    # Navigation & Status Updating Methods
+    # ========================================================================
+    def navigate_to_page(self, index: int):
+        self.stack.setCurrentIndex(index)
+        for btn in self.nav_buttons:
+            btn.set_active(btn.page_index == index)
+
+    def update_status(self, status_text=None, mode_text=None, readiness=None, data_text=None):
+        if status_text:
+            self.status_map_text.setText(status_text)
+            if "warning" in status_text.lower() or "error" in status_text.lower() or "offline" in status_text.lower():
+                self.status_dot.setStyleSheet(f"color: {AMBER}; font-size: 12px;")
+            else:
+                self.status_dot.setStyleSheet(f"color: {MINT}; font-size: 12px;")
+        if mode_text:
+            self.status_mode_pill.setText(mode_text)
+        if readiness:
+            self.status_readiness.setText(f"Analysis: {readiness}")
+        if data_text:
+            self.status_data.setText(f"Data: {data_text}")
+
+
+def main():
+    app = QApplication.instance() or QApplication(sys.argv)
+    window = MainWindow()
+    window.showMaximized()
+    window.raise_()
+    window.activateWindow()
+    return app.exec()
+
+
+if __name__ == "__main__":
+    sys.exit(main())
