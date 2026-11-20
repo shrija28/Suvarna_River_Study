@@ -507,29 +507,33 @@ class DeviationService:
         if not dev:
             return False, "Could not compute deviation for export."
 
+        min_y = min(base_year, target_year)
+        max_y = max(base_year, target_year)
+
         rows = []
         for row in dev["timeseries"]:
-            rows.append({
-                "Year": row["year"],
-                "Observation Type": row["obs_type"],
-                "Latitude (WGS84)": f"{row['mouth_lat']:.6f}",
-                "Longitude (WGS84)": f"{row['mouth_lon']:.6f}",
-                "ΔLatitude (deg)": f"{row['d_lat']:+.6f}",
-                "ΔLongitude (deg)": f"{row['d_lon']:+.6f}",
-                "ΔEasting / ΔX (m)": f"{row['dx_m']:+.2f}",
-                "ΔNorthing / ΔY (m)": f"{row['dy_m']:+.2f}",
-                "Difference in Meters (m)": f"{row['displacement_m']:.2f}",
-                "Displacement Direction": row["direction"],
-                "Azimuth Bearing (deg)": f"{row['azimuth_deg']:.1f}",
-                "Water Body Area (km²)": f"{row['water_area_km2']:.2f}",
-                "Area Change from Base (km²)": f"{row['area_change_km2']:+.2f}",
-                "Migration Rate (m/yr)": f"{row['rate_m_yr']:.2f}",
-                "Opening Width (m)": f"{row.get('opening_width_m', 0.0):.1f}",
-                "River Mouth UTM Easting (m)": f"{row['mouth_utm_x']:.1f}",
-                "River Mouth UTM Northing (m)": f"{row['mouth_utm_y']:.1f}",
-                "CRS": "EPSG:32643",
-                "Baseline Reference Year": base_year
-            })
+            if min_y <= row["year"] <= max_y:
+                rows.append({
+                    "Year": row["year"],
+                    "Observation Type": row["obs_type"],
+                    "Latitude (WGS84)": f"{row['mouth_lat']:.6f}",
+                    "Longitude (WGS84)": f"{row['mouth_lon']:.6f}",
+                    "ΔLatitude (deg)": f"{row['d_lat']:+.6f}",
+                    "ΔLongitude (deg)": f"{row['d_lon']:+.6f}",
+                    "ΔEasting / ΔX (m)": f"{row['dx_m']:+.2f}",
+                    "ΔNorthing / ΔY (m)": f"{row['dy_m']:+.2f}",
+                    "Difference in Meters (m)": f"{row['displacement_m']:.2f}",
+                    "Displacement Direction": row["direction"],
+                    "Azimuth Bearing (deg)": f"{row['azimuth_deg']:.1f}",
+                    "Water Body Area (km²)": f"{row['water_area_km2']:.2f}",
+                    "Area Change from Base (km²)": f"{row['area_change_km2']:+.2f}",
+                    "Migration Rate (m/yr)": f"{row['rate_m_yr']:.2f}",
+                    "Opening Width (m)": f"{row.get('opening_width_m', 0.0):.1f}",
+                    "River Mouth UTM Easting (m)": f"{row['mouth_utm_x']:.1f}",
+                    "River Mouth UTM Northing (m)": f"{row['mouth_utm_y']:.1f}",
+                    "CRS": "EPSG:32643",
+                    "Baseline Reference Year": base_year
+                })
 
         try:
             df = pd.DataFrame(rows)
@@ -603,9 +607,11 @@ class DeviationService:
             }
         })
 
-        # Feature 4..N: All other observation years
+        # Feature 4..N: All other observation years within selected period
+        min_y = min(base_year, target_year)
+        max_y = max(base_year, target_year)
         for item in dev["timeseries"]:
-            if item["year"] not in [base_year, target_year]:
+            if min_y <= item["year"] <= max_y and item["year"] not in [base_year, target_year]:
                 features.append({
                     "type": "Feature",
                     "geometry": {

@@ -27,6 +27,37 @@ class SuvarnaDataService:
         self._raster_cache = {}
         self._lulc_data_cache = None
         self._benchmark_years = list(DEFAULT_BENCHMARK_YEARS)
+        self._base_year = 1989
+        self._prediction_year = 2000
+
+    def set_year_range(self, base_year: int, prediction_year: int):
+        """Sets the centralized Base Year and Prediction Year, validating bounds."""
+        try:
+            b = max(1989, min(2026, int(str(base_year).strip())))
+            p = max(1989, min(2026, int(str(prediction_year).strip())))
+            if b > p:
+                p = b
+            self._base_year = b
+            self._prediction_year = p
+            self.set_benchmark_years(list(range(b, p + 1)))
+        except (ValueError, TypeError):
+            pass
+
+    def get_base_year(self) -> int:
+        """Returns the centralized master Base Year."""
+        return self._base_year
+
+    def get_prediction_year(self) -> int:
+        """Returns the centralized master Prediction Year."""
+        return self._prediction_year
+
+    def get_year_range(self) -> tuple:
+        """Returns the centralized master (Base Year, Prediction Year) tuple."""
+        return (self._base_year, self._prediction_year)
+
+    def get_selected_years(self) -> list[int]:
+        """Returns the inclusive chronological year range [base_year .. prediction_year]."""
+        return list(range(self._base_year, self._prediction_year + 1))
 
     def get_benchmark_years(self):
         """Returns the currently active list of benchmark observation years."""

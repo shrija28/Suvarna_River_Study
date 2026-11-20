@@ -77,7 +77,7 @@ class YearImageCard(QFrame):
         card_layout.setContentsMargins(10, 8, 10, 8)
         card_layout.setSpacing(6)
 
-        # Header: Year and Phase Badge
+        # Header: Year Label and Download Button
         header_row = QHBoxLayout()
         header_row.setSpacing(6)
 
@@ -89,32 +89,6 @@ class YearImageCard(QFrame):
             letter-spacing: 0.5px;
         """)
         header_row.addWidget(year_lbl)
-
-        # Phase chip
-        if year == 1989:
-            badge_text = "Baseline"
-            badge_color = TEAL
-        elif year >= 2025:
-            badge_text = "AI Projection"
-            badge_color = SOFT_LIME
-        elif year == 2024:
-            badge_text = "Present"
-            badge_color = MINT
-        else:
-            badge_text = "Historical"
-            badge_color = MUTED_SAGE
-
-        chip = QLabel(badge_text)
-        chip.setStyleSheet(f"""
-            font-size: 10px;
-            font-weight: 600;
-            color: {badge_color};
-            background-color: {DARK_EMERALD};
-            padding: 2px 7px;
-            border-radius: 4px;
-            border: 1px solid {BORDER_SUBTLE};
-        """)
-        header_row.addWidget(chip)
         header_row.addStretch()
 
         # Download icon button for single year
@@ -151,12 +125,17 @@ class YearImageCard(QFrame):
             border-radius: 6px;
         """)
         card_layout.addWidget(self.img_label, 1)
+        self.setMinimumHeight(235)
+        self.setMinimumWidth(220)
 
         # Footer: Metadata info
         footer_row = QHBoxLayout()
         w_km2 = meta.get("water_km2", 0.0) if meta else 0.0
         width_m = meta.get("width_m") if meta else None
-        if meta and meta.get("view_mode") == "first_opening" and width_m:
+        is_avail = meta.get("available", True) if meta else True
+        if not is_avail or pixmap is None or pixmap.isNull():
+            meta_text = f"Observation Unavailable ({self.year})"
+        elif meta and meta.get("view_mode") == "first_opening" and width_m:
             meta_text = f"Mouth Width: {width_m:.1f} m  |  First Opening (Drive)"
         elif meta and meta.get("view_mode") == "first_opening":
             meta_text = f"Estuary Water: {w_km2:.2f} km²  |  Baseline Geometry"
@@ -175,7 +154,10 @@ class YearImageCard(QFrame):
         self.meta = meta
         w_km2 = meta.get("water_km2", 0.0) if meta else 0.0
         width_m = meta.get("width_m") if meta else None
-        if view_mode == "first_opening" and width_m:
+        is_avail = meta.get("available", True) if meta else True
+        if not is_avail or pixmap is None or pixmap.isNull():
+            meta_text = f"Observation Unavailable ({self.year})"
+        elif view_mode == "first_opening" and width_m:
             meta_text = f"Mouth Width: {width_m:.1f} m  |  First Opening (Drive)"
         elif view_mode == "first_opening":
             meta_text = f"Estuary Water: {w_km2:.2f} km²  |  Baseline Geometry"
@@ -195,9 +177,24 @@ class YearImageCard(QFrame):
                 Qt.SmoothTransformation
             )
             self.img_label.setPixmap(scaled)
+            self.img_label.setText("")
+            self.img_label.setStyleSheet(f"""
+                background-color: {BG_DARK};
+                border: 1px solid {BORDER_SUBTLE};
+                border-radius: 6px;
+            """)
         else:
-            self.img_label.setText(f"Image {self.year}\nNot Available")
-            self.img_label.setStyleSheet(f"color: {MUTED_SAGE}; font-size: 11px;")
+            self.img_label.setPixmap(QPixmap())
+            self.img_label.setText(f"Image not available for this year\n({self.year})")
+            self.img_label.setStyleSheet(f"""
+                background-color: {BG_DARK};
+                color: {MUTED_SAGE};
+                font-size: 11px;
+                font-weight: 600;
+                border: 1px dashed {BORDER_SUBTLE};
+                border-radius: 6px;
+                padding: 10px;
+            """)
 
     def resizeEvent(self, event):
         super().resizeEvent(event)
@@ -214,13 +211,51 @@ class RiverMouthImagesPage(QWidget):
         self.main_window = main_window
         self.cards = []
         self.current_view_mode = "mask"
-        self.display_years = list(data_service.get_benchmark_years())
+        self._fallback_years = [1989, 2000]
         self.build_ui()
+
+    @property
+    def display_years(self) -> list[int]:
+        """
+        Reuses the Home page's selected Base Year and Prediction Year state directly.
+        Returns the full inclusive year range (e.g. 1989..2000).
+        """
+        if self.main_window and hasattr(self.main_window, "home_page") and hasattr(self.main_window.home_page, "get_selected_years"):
+            return self.main_window.home_page.get_selected_years()
+        if hasattr(self, "_fallback_years") and self._fallback_years:
+            return self._fallback_years
+        return list(range(1989, 2001))
+
+    @display_years.setter
+    def display_years(self, years: list):
+        if not years:
+            return
+        valid = []
+        for y in years:
+            try:
+                yi = int(str(y).strip())
+                if 1980 <= yi <= 2035 and yi not in valid:
+                    valid.append(yi)
+            except (ValueError, TypeError):
+                pass
+        valid.sort()
+        if not valid:
+            return
+        self._fallback_years = list(range(valid[0], valid[-1] + 1))
+        if self.main_window and hasattr(self.main_window, "home_page") and hasattr(self.main_window.home_page, "set_selected_years"):
+            self.main_window.home_page.set_selected_years(self._fallback_years)
 
     @property
     def DISPLAY_YEARS(self):
         """Backwards compatibility accessor for benchmark years."""
         return self.display_years
+
+    def showEvent(self, event):
+        super().showEvent(event)
+        # Always synchronize with Home page's selected-year range upon opening
+        current_card_years = [c.year for c in self.cards]
+        if current_card_years != self.display_years:
+            self.populate_gallery()
 
     def build_ui(self):
         root_layout = QHBoxLayout(self)
@@ -256,13 +291,7 @@ class RiverMouthImagesPage(QWidget):
             letter-spacing: 0.3px;
         """)
 
-        sub_title = QLabel(
-            "Multi-decadal satellite observations (1989–2026) • Kodi Bengre Estuarine Spit & Channel Migration"
-        )
-        sub_title.setStyleSheet(f"font-size: 11px; color: {MUTED_SAGE};")
-
         title_box.addWidget(title)
-        title_box.addWidget(sub_title)
         gallery_header.addLayout(title_box)
 
         gallery_header.addStretch()
@@ -320,6 +349,31 @@ class RiverMouthImagesPage(QWidget):
         self.download_btn.clicked.connect(self.download_all_images)
         gallery_header.addWidget(self.download_btn)
 
+        # Analyze Button in Header
+        self.header_analyze_btn = QPushButton("Analyze Deviation  →")
+        self.header_analyze_btn.setIcon(get_icon("analysis", color=DARK_EMERALD, size=16))
+        self.header_analyze_btn.setCursor(Qt.PointingHandCursor)
+        self.header_analyze_btn.setFixedHeight(34)
+        self.header_analyze_btn.setStyleSheet(f"""
+            QPushButton {{
+                background-color: {SOFT_LIME};
+                color: {DARK_EMERALD};
+                font-size: 12px;
+                font-weight: 800;
+                border: none;
+                border-radius: 6px;
+                padding: 6px 16px;
+            }}
+            QPushButton:hover {{
+                background-color: #D4F090;
+            }}
+            QPushButton:pressed {{
+                background-color: {MINT};
+            }}
+        """)
+        self.header_analyze_btn.clicked.connect(self.go_to_analysis)
+        gallery_header.addWidget(self.header_analyze_btn)
+
         main_layout.addLayout(gallery_header)
 
         # 2. Scrollable Image Gallery Grid
@@ -341,7 +395,7 @@ class RiverMouthImagesPage(QWidget):
 
         # 3. Bottom Action Bar with Analyze Button
         bottom_bar = QFrame()
-        bottom_bar.setFixedHeight(62)
+        bottom_bar.setFixedHeight(50)
         bottom_bar.setStyleSheet(f"""
             QFrame {{
                 background-color: {PANEL_SURFACE};
@@ -350,27 +404,15 @@ class RiverMouthImagesPage(QWidget):
             }}
         """)
         bottom_layout = QHBoxLayout(bottom_bar)
-        bottom_layout.setContentsMargins(16, 8, 16, 8)
+        bottom_layout.setContentsMargins(16, 6, 16, 6)
         bottom_layout.setSpacing(14)
-
-        status_box = QVBoxLayout()
-        status_box.setSpacing(1)
-        status_box.setAlignment(Qt.AlignVCenter)
-        status_title = QLabel("Ready for Estuarine Morphodynamic & Deviation Analysis")
-        status_title.setStyleSheet(f"font-size: 12px; font-weight: 700; color: {WARM_IVORY};")
-        self.status_sub = QLabel(f"{len(self.display_years)} multi-decadal satellite datasets calibrated with ground truth rasters.")
-        self.status_sub.setStyleSheet(f"font-size: 11px; color: {MUTED_SAGE};")
-        status_box.addWidget(status_title)
-        status_box.addWidget(self.status_sub)
-        bottom_layout.addLayout(status_box)
-
         bottom_layout.addStretch()
 
         # Analyze Button at Bottom
         self.analyze_btn = QPushButton("Analyze  →")
         self.analyze_btn.setIcon(get_icon("analysis", color=DARK_EMERALD, size=16))
         self.analyze_btn.setCursor(Qt.PointingHandCursor)
-        self.analyze_btn.setFixedHeight(40)
+        self.analyze_btn.setFixedHeight(38)
         self.analyze_btn.setStyleSheet(f"""
             QPushButton {{
                 background-color: {MINT};
@@ -529,17 +571,51 @@ class RiverMouthImagesPage(QWidget):
             desc = "Clean Estuarine Water Masks" if mode == "mask" else "Google Drive First-Opening Mouth Detections"
             self.main_window.update_status(status_text=f"River Mouth Gallery: {desc}")
 
+    def set_selected_years(self, years: list, force_reload: bool = False):
+        """
+        Reuses and updates the Home page's selected-year state directly.
+        Ensures the gallery and Home page always remain synchronized, rather
+        than maintaining two independent year selections.
+        """
+        if years and self.main_window and hasattr(self.main_window, "home_page") and hasattr(self.main_window.home_page, "set_selected_years"):
+            self.main_window.home_page.set_selected_years(years)
+        elif years:
+            self._fallback_years = sorted(list(set(int(y) for y in years if str(y).strip().isdigit())))
+
+        self.populate_gallery()
+
     def populate_gallery(self):
-        # Clear existing
+        # Clear existing widgets cleanly
         while self.grid_layout.count():
             item = self.grid_layout.takeAt(0)
-            if item.widget():
-                item.widget().deleteLater()
+            widget = item.widget()
+            if widget:
+                widget.setParent(None)
+                widget.deleteLater()
         self.cards.clear()
 
-        # Responsive 4-column layout for benchmark observation cards
-        cols = 4
-        for idx, yr in enumerate(self.display_years):
+        years = self.display_years
+        num_years = len(years)
+        if num_years == 0:
+            empty_lbl = QLabel("No observation years selected on the Home page.")
+            empty_lbl.setAlignment(Qt.AlignCenter)
+            empty_lbl.setStyleSheet(f"font-size: 13px; color: {MUTED_SAGE}; padding: 40px;")
+            self.grid_layout.addWidget(empty_lbl, 0, 0)
+            return
+
+        # Dynamically adjust column count to match the number of selected years
+        if num_years <= 4:
+            cols = max(1, num_years)
+        elif num_years == 6:
+            cols = 3
+        else:
+            cols = 4
+
+        self.grid_layout.setAlignment(Qt.AlignTop)
+        for c in range(cols):
+            self.grid_layout.setColumnStretch(c, 1)
+
+        for idx, yr in enumerate(years):
             pix, meta = data_service.get_raster_image_for_year(yr, view_mode=self.current_view_mode)
             card = YearImageCard(
                 year=yr,
@@ -583,19 +659,31 @@ class RiverMouthImagesPage(QWidget):
             self.stack.setCurrentIndex(2)
 
     def go_to_analysis(self):
-        """Navigates to the placeholder for the next analysis page."""
+        """Navigates to the River Mouth Deviation Analysis page."""
+        years = self.display_years
+        b_yr = years[0] if years else 1989
+        t_yr = years[-1] if len(years) > 1 else (years[0] if years else 2026)
+
+        print(f"[Gallery] Analyze clicked: Navigating to Deviation Analysis (Base={b_yr}, Target={t_yr})")
+
+        # Synchronize centralized data service
+        from backend.data_service import data_service
+        data_service.set_year_range(b_yr, t_yr)
+
         if self.main_window and hasattr(self.main_window, "go_to_analysis"):
             self.main_window.go_to_analysis()
         elif self.main_window and hasattr(self.main_window, "navigate_to_page"):
-            self.main_window.navigate_to_page(5)  # Index 5: Analysis Placeholder
-        else:
+            if hasattr(self.main_window, "deviation_page") and hasattr(self.main_window.deviation_page, "set_years"):
+                self.main_window.deviation_page.set_years(b_yr, t_yr)
+            self.main_window.navigate_to_page(5)  # Index 5: Deviation Analysis
+        elif self.stack:
             self.stack.setCurrentIndex(5)
 
     # ========================================================================
     # Download Functionality
     # ========================================================================
     def download_all_images(self):
-        """Exports all displayed river mouth images to a folder chosen by user."""
+        """Exports all displayed river mouth images within the selected range to a folder chosen by user."""
         target_dir = QFileDialog.getExistingDirectory(
             self,
             "Select Folder to Save River Mouth Images",
@@ -608,7 +696,12 @@ class RiverMouthImagesPage(QWidget):
         mode_prefix = "First_Opening" if self.current_view_mode == "first_opening" else "Water_Mask"
         for card in self.cards:
             if card.raw_pixmap and not card.raw_pixmap.isNull():
-                fn = f"Suvarna_{mode_prefix}_{card.year}.png"
+                orig_fn = card.meta.get("filename") if card.meta else ""
+                if orig_fn:
+                    base_name, _ = os.path.splitext(orig_fn)
+                    fn = f"{base_name}.png"
+                else:
+                    fn = f"Suvarna_{mode_prefix}_{card.year}.png"
                 out_path = os.path.join(target_dir, fn)
                 card.raw_pixmap.save(out_path, "PNG")
                 saved_files.append(fn)
@@ -625,15 +718,23 @@ class RiverMouthImagesPage(QWidget):
                     status_text=f"Downloaded {len(saved_files)} river-mouth images"
                 )
         else:
-            QMessageBox.warning(self, "Download Notice", "No valid image rasters were found to export.")
+            QMessageBox.warning(self, "Download Notice", "No valid image rasters were found to export for the selected years.")
 
     def download_single_image(self, year: int, pixmap: QPixmap):
         """Exports a single year's river mouth image to user-chosen path."""
         if not pixmap or pixmap.isNull():
-            QMessageBox.warning(self, "Download Warning", f"Image for year {year} is not available.")
+            QMessageBox.warning(self, "Download Warning", f"Image not available for this year ({year}).")
             return
 
-        default_name = f"River_Mouth_{year}.png"
+        matching_card = next((c for c in self.cards if c.year == year), None)
+        orig_fn = matching_card.meta.get("filename") if matching_card and matching_card.meta else ""
+        if orig_fn:
+            base_name, _ = os.path.splitext(orig_fn)
+            default_name = f"{base_name}.png"
+        else:
+            mode_prefix = "First_Opening" if self.current_view_mode == "first_opening" else "Water_Mask"
+            default_name = f"Suvarna_{mode_prefix}_{year}.png"
+
         out_path, _ = QFileDialog.getSaveFileName(
             self,
             f"Save River Mouth Image ({year})",

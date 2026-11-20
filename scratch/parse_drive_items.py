@@ -1,20 +1,13 @@
+import urllib.request
 import re
+import json
 
-with open("scratch/callback_3_ds:3.txt", "r", encoding="utf-8") as f:
-    text = f.read()
+url = 'https://drive.google.com/drive/folders/1Aol2e9FOR20asy8t8-ZtENTBTL9QZ2Kz?usp=sharing'
+req = urllib.request.Request(url, headers={'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64)'})
+with urllib.request.urlopen(req) as resp:
+    html = resp.read().decode('utf-8', errors='ignore')
 
-# Let's extract all matches of ID and Name
-# In Drive data, items appear with an alphanumeric ID (e.g., 15Y2km4gxhbdCVPf7PqQDOVi5fUdOZW0H)
-# followed or preceded by title, mimeType, dates, etc.
-# Find all Google Drive item IDs (28-44 chars)
-item_ids = re.findall(r'\"(1[a-zA-Z0-9_-]{27,45})\"', text)
-print(f"Total IDs matching pattern: {len(item_ids)}")
-print("Unique IDs:", set(item_ids))
-
-# Let's see the structure surrounding these IDs
-for i_id in set(item_ids):
-    pos = text.find(i_id)
-    snippet = text[max(0, pos - 150): min(len(text), pos + 300)]
-    print(f"\n--- Context for ID: {i_id} ---")
-    print(snippet)
-
+# Save html to scratch/drive_folder.html so we can analyze it locally
+with open('scratch/drive_folder.html', 'w', encoding='utf-8') as f:
+    f.write(html)
+print('Wrote scratch/drive_folder.html')

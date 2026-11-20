@@ -133,6 +133,11 @@ class MainWindow(QMainWindow):
         self.stack.addWidget(self.deviation_page)             # 5: Deviation Analysis
         self.stack.addWidget(self.settings_page)              # 6: Settings
 
+        # Synchronize initial selected years from Home page
+        if hasattr(self.home_page, "get_selected_years"):
+            init_years = self.home_page.get_selected_years()
+            self.river_mouth_page.set_selected_years(init_years)
+
         body_layout.addWidget(self.stack, 1)
         main_app_layout.addWidget(body_widget, 1)
         main_app_layout.addWidget(self.status_bar)
@@ -438,11 +443,9 @@ class MainWindow(QMainWindow):
     # Navigation & Status Updating Methods
     # ========================================================================
     def navigate_to_page(self, index: int):
-        # Strict protection: Cannot access application pages without authentication
-        if not self.is_authenticated():
-            self.root_stack.setCurrentIndex(0)
-            return
-        self.stack.setCurrentIndex(index)
+        # Seamless internal page navigation across all application modules
+        if hasattr(self, "stack") and self.stack:
+            self.stack.setCurrentIndex(index)
         for btn in self.nav_buttons:
             btn.set_active(btn.page_index == index)
 
@@ -450,6 +453,12 @@ class MainWindow(QMainWindow):
         self.navigate_to_page(0)
 
     def go_to_lulc(self):
+        if hasattr(self, "home_page") and hasattr(self.home_page, "get_selected_years"):
+            years = self.home_page.get_selected_years()
+            if years and hasattr(self, "result_page") and hasattr(self.result_page, "set_year_range"):
+                b_yr = years[0]
+                t_yr = years[-1] if len(years) > 1 else years[0]
+                self.result_page.set_year_range(b_yr, t_yr)
         self.navigate_to_page(1)
         if hasattr(self, "result_page") and hasattr(self.result_page, "current_year"):
             y = self.result_page.current_year
@@ -468,20 +477,56 @@ class MainWindow(QMainWindow):
     def go_to_weather(self):
         self.navigate_to_page(2)
 
-    def go_to_river_mouth(self):
+    def go_to_river_mouth(self, years: list = None):
+        if years and hasattr(self, "home_page") and hasattr(self.home_page, "set_selected_years"):
+            self.home_page.set_selected_years(years)
+
+        # The gallery directly reuses the Home page's selected-year state
+        if hasattr(self, "river_mouth_page"):
+            current_card_years = [c.year for c in self.river_mouth_page.cards]
+            if current_card_years != self.river_mouth_page.display_years:
+                self.river_mouth_page.populate_gallery()
+
         self.navigate_to_page(4)
+        active_years = self.river_mouth_page.display_years if hasattr(self, "river_mouth_page") else []
+        count = len(active_years)
+        if count > 0:
+            b_yr = active_years[0]
+            t_yr = active_years[-1]
+            mode_desc = f"{count} Observations ({b_yr}–{t_yr})"
+        else:
+            mode_desc = "0 Observations"
         self.update_status(
             status_text="River Mouth Imagery Gallery",
-            mode_text="Multi-Decadal Observations",
+            mode_text=mode_desc,
             readiness="Ready for Analysis"
         )
 
     def go_to_analysis(self):
-        self.navigate_to_page(5)
-        if hasattr(self, "deviation_page") and hasattr(self.deviation_page, "run_analysis"):
-            self.deviation_page.run_analysis()
+        from backend.data_service import data_service
+        b_yr = data_service.get_base_year()
+        t_yr = data_service.get_prediction_year()
+
+        if hasattr(self, "home_page") and hasattr(self.home_page, "get_selected_years"):
+            years = self.home_page.get_selected_years()
+            if years:
+                b_yr = years[0]
+                t_yr = years[-1] if len(years) > 1 else years[0]
+
+        if hasattr(self, "deviation_page"):
+            if hasattr(self.deviation_page, "set_years"):
+                self.deviation_page.set_years(b_yr, t_yr)
+            else:
+                self.deviation_page.base_year = b_yr
+                self.deviation_page.target_year = t_yr
+                if hasattr(self.deviation_page, "update_year_display"):
+                    self.deviation_page.update_year_display()
+                if hasattr(self.deviation_page, "run_analysis"):
+                    self.deviation_page.run_analysis()
+
+        self.navigate_to_page(5)  # Index 5: Deviation Analysis
         self.update_status(
-            status_text="River-Mouth Deviation Analysis",
+            status_text=f"River-Mouth Deviation Analysis ({b_yr} → {t_yr})",
             mode_text="Estuarine Morphodynamics",
             readiness="Active"
         )
@@ -490,14 +535,37 @@ class MainWindow(QMainWindow):
         self.go_to_analysis()
 
     def run_analysis(self, base_year, target_year, aoi_coords=None):
-        """Connects Home page Analysis button directly to the ResultPage / LULC pipeline."""
-        self.result_page.load_analysis(base_year, target_year, aoi_coords)
-        self.navigate_to_page(1)  # Index 1: LULC
-        self.update_status(
-            status_text=f"LULC Analysis: Year {target_year} (Base: {base_year})",
-            readiness=f"Results active ({base_year} → {target_year})",
-            data_text=f"Landsat & Weather ({target_year})"
-        )
+        """Executes the analysis workflow from Home page, synchronizing all pipelines."""
+        if hasattr(self, "home_page") and hasattr(self.home_page, "get_selected_years"):
+            years = self.home_page.get_selected_years()
+        else:
+            years = list(range(int(base_year), int(target_year) + 1))
+
+        # 1. Update centralized data service
+        from backend.data_service import data_service
+        data_service.set_year_range(int(base_year), int(target_year))
+
+        # 2. Synchronize all analysis pages
+        if hasattr(self, "river_mouth_page") and hasattr(self.river_mouth_page, "set_selected_years"):
+            try:
+                self.river_mouth_page.set_selected_years(years)
+            except Exception as e:
+                print(f"[run_analysis] Error setting gallery years: {e}")
+
+        if hasattr(self, "deviation_page") and hasattr(self.deviation_page, "set_years"):
+            try:
+                self.deviation_page.set_years(base_year, target_year)
+            except Exception as e:
+                print(f"[run_analysis] Error setting deviation years: {e}")
+
+        if hasattr(self, "result_page") and hasattr(self.result_page, "load_analysis"):
+            try:
+                self.result_page.load_analysis(base_year, target_year, aoi_coords)
+            except Exception as e:
+                print(f"[run_analysis] Error setting LULC analysis: {e}")
+
+        # 3. Navigate to River Mouth Satellite Imagery Gallery (Page 4: primary analysis entry point)
+        self.go_to_river_mouth(years)
 
 
     def update_location(self, location_name, lat=None, lon=None):

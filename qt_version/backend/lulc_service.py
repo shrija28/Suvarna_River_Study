@@ -93,6 +93,7 @@ class LULCService:
         return {
             "master_csv": dataset_config.lulc_master_csv,
             "master_pdf": dataset_config.lulc_master_pdf,
+            "lulc_images_dir": dataset_config.lulc_dir,
             "water_plot": dataset_config.water_body_plot_path,
             "width_plot": dataset_config.width_plot_path,
             "opening_results_csv": dataset_config.opening_results_csv,
@@ -175,8 +176,23 @@ class LULCService:
             except Exception as e:
                 print(f"Error reading raster metadata for {year}: {e}")
 
-        # 3. Generate 4-class Classified QPixmap from real satellite rasters
-        pixmap = self._generate_classified_pixmap(year, ndwi_f, rgb_f, bin_f, meta_shape)
+        # 3. Load official high-resolution LULC classification image from Google Drive folder
+        lulc_png_candidates = [
+            os.path.join(dataset_config.lulc_dir, f"LULC_{year}.png"),
+            os.path.join(dataset_config.root_dir, "LULC_images", f"LULC_{year}.png"),
+            os.path.join(dataset_config.river_mouth_dir, "LULC_images", f"LULC_{year}.png"),
+        ]
+        pixmap = None
+        for lp in lulc_png_candidates:
+            if os.path.exists(lp):
+                qimg = QImage(lp)
+                if not qimg.isNull():
+                    pixmap = QPixmap.fromImage(qimg)
+                    break
+
+        if pixmap is None or pixmap.isNull():
+            pixmap = self._generate_classified_pixmap(year, ndwi_f, rgb_f, bin_f, meta_shape)
+
         ndwi_pixmap = self._generate_ndwi_pixmap(year, ndwi_f, meta_shape)
         rgb_pixmap = self._generate_rgb_pixmap(year, rgb_f, meta_shape)
 
@@ -431,6 +447,21 @@ class LULCService:
             return True, f"Successfully exported full multi-decadal LULC table ({len(df)} observation years)."
         except Exception as e:
             return False, str(e)
+
+    def export_filtered_years_csv(self, base_year: int, target_year: int, file_path: str) -> tuple[bool, str]:
+        """Exports the filtered LULC timeseries table strictly between base_year and target_year."""
+        try:
+            df = self.load_master_counts()
+            filtered_df = df[(df["year"] >= base_year) & (df["year"] <= target_year)]
+            filtered_df.to_csv(file_path, index=False, encoding="utf-8")
+            return True, f"Successfully exported LULC table for {len(filtered_df)} years ({base_year}–{target_year})."
+        except Exception as e:
+            return False, str(e)
+
+    def get_filtered_master_records(self, base_year: int = 1989, target_year: int = 2026) -> list[dict]:
+        """Returns observation records strictly within the selected [base_year, target_year] range."""
+        all_recs = self.get_all_master_records()
+        return [r for r in all_recs if base_year <= r["year"] <= target_year]
 
 
 lulc_service = LULCService()

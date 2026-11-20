@@ -149,6 +149,10 @@ class LULCClassCard(QFrame):
         self.area_lbl.setText(f"{area_km2:.2f} km²")
         self.pct_badge.setText(f"{percentage:.1f} %")
 
+    def show_unavailable(self):
+        self.area_lbl.setText("--")
+        self.pct_badge.setText("N/A")
+
 
 # ============================================================================
 # Comparison Bar Chart Across All 37 Years & Selected Year Breakdown
@@ -159,6 +163,8 @@ class LULCComparisonChartWidget(QFrame):
     def __init__(self, parent=None):
         super().__init__(parent)
         self.current_year = 1989
+        self.base_year = 1989
+        self.target_year = 2026
         self.data = None
         self.all_records = []
         self.chart_mode = "timeseries"  # "timeseries" or "breakdown"
@@ -189,7 +195,7 @@ class LULCComparisonChartWidget(QFrame):
         ctrl_row.addStretch()
 
         # Mode Toggle Buttons
-        self.btn_mode_ts = QPushButton("37-Year Timeseries")
+        self.btn_mode_ts = QPushButton("Timeseries")
         self.btn_mode_bd = QPushButton("Year Breakdown")
         for b in [self.btn_mode_ts, self.btn_mode_bd]:
             b.setCursor(Qt.PointingHandCursor)
@@ -298,13 +304,26 @@ class LULCComparisonChartWidget(QFrame):
             }}
         """
 
+    def set_year_range(self, base_year: int, target_year: int):
+        self.base_year = int(base_year)
+        self.target_year = int(target_year)
+        all_recs = lulc_service.get_all_master_records()
+        self.all_records = [r for r in all_recs if self.base_year <= r["year"] <= self.target_year]
+        count = len(self.all_records)
+        self.btn_mode_ts.setText(f"{count}-Year Timeseries")
+        if self.chart_mode == "timeseries":
+            self.title_lbl.setText(f"Multi-Decadal Comparison Bar Chart ({self.base_year}–{self.target_year})")
+        else:
+            self.title_lbl.setText(f"Class Area Breakdown & Proportional Composition • Year {self.current_year}")
+        self.canvas.update()
+
     def set_chart_mode(self, mode: str):
         self.chart_mode = mode
         self.btn_mode_ts.setStyleSheet(self._button_style(mode == "timeseries"))
         self.btn_mode_bd.setStyleSheet(self._button_style(mode == "breakdown"))
         self.filter_bar.setVisible(mode == "timeseries")
         if mode == "timeseries":
-            self.title_lbl.setText("Multi-Decadal Comparison Bar Chart across all 37 Observation Years")
+            self.title_lbl.setText(f"Multi-Decadal Comparison Bar Chart ({self.base_year}–{self.target_year})")
         else:
             self.title_lbl.setText(f"Class Area Breakdown & Proportional Composition • Year {self.current_year}")
         self.canvas.update()
@@ -319,7 +338,8 @@ class LULCComparisonChartWidget(QFrame):
         self.data = lulc_data
         self.current_year = current_year
         if not self.all_records:
-            self.all_records = lulc_service.get_all_master_records()
+            all_recs = lulc_service.get_all_master_records()
+            self.all_records = [r for r in all_recs if self.base_year <= r["year"] <= self.target_year]
         if self.chart_mode == "breakdown":
             self.title_lbl.setText(f"Class Area Breakdown & Proportional Composition • Year {self.current_year}")
         self.canvas.update()
@@ -349,11 +369,12 @@ class LULCComparisonChartWidget(QFrame):
     def _paint_timeseries_bars(self, p: QPainter, w: int, h: int):
         self.bar_rects.clear()
         if not self.all_records:
-            self.all_records = lulc_service.get_all_master_records()
+            all_recs = lulc_service.get_all_master_records()
+            self.all_records = [r for r in all_recs if self.base_year <= r["year"] <= self.target_year]
 
         if not self.all_records:
             p.setPen(QColor(MUTED_SAGE))
-            p.drawText(QRectF(0, 0, w, h), Qt.AlignCenter, "No multi-decadal LULC data loaded")
+            p.drawText(QRectF(0, 0, w, h), Qt.AlignCenter, "No LULC data available for selected year range")
             return
 
         pad_left = 65
@@ -412,7 +433,7 @@ class LULCComparisonChartWidget(QFrame):
         # Draw Title on plot
         p.setPen(QColor(WARM_IVORY))
         p.setFont(QFont("Segoe UI", 10, QFont.Bold))
-        p.drawText(pad_left + 6, pad_top - 10, f"{unit_title} • 37 Observation Years (1989–2026)")
+        p.drawText(pad_left + 6, pad_top - 10, f"{unit_title} • {len(self.all_records)} Observation Years ({self.base_year}–{self.target_year})")
 
         # Render 37 Bars
         num_bars = len(self.all_records)
@@ -658,7 +679,7 @@ class LULCMapDisplayCard(QFrame):
             ("classified", "4-Class Map"),
             ("ndwi", "NDWI Water"),
             ("rgb", "RGB Landsat"),
-            ("water_plot", "Water Plot (1989-2026)"),
+            ("water_plot", "Water Plot"),
             ("width_plot", "Channel Width Plot"),
         ]
         for key, text in views:
@@ -823,6 +844,13 @@ class LULCMapDisplayCard(QFrame):
         self.meta_chip.setText("Res: 30m • EPSG:32643")
         self.leg_layout.addWidget(self.meta_chip)
 
+    def show_unavailable(self, year: int):
+        self.current_data = None
+        self.title_lbl.setText(f"Classified 4-Class LULC Map • Year {year}")
+        self.chip_status.setText("Data Unavailable")
+        self.image_container.setText("LULC data unavailable for this year")
+        self.image_container.setStyleSheet(f"color: {MUTED_SAGE}; font-size: 13px; font-weight: 600; background-color: {BG_DARK};")
+
     def _scale_and_render(self):
         pix = None
         if self.active_view == "classified":
@@ -842,8 +870,8 @@ class LULCMapDisplayCard(QFrame):
             scaled = pix.scaled(cw, ch, Qt.KeepAspectRatio, Qt.SmoothTransformation)
             self.image_container.setPixmap(scaled)
         else:
-            self.image_container.setText("No imagery available for this view")
-            self.image_container.setStyleSheet(f"color: {MUTED_SAGE}; font-size: 12px; background-color: {BG_DARK};")
+            self.image_container.setText("LULC data unavailable for this year")
+            self.image_container.setStyleSheet(f"color: {MUTED_SAGE}; font-size: 13px; font-weight: 600; background-color: {BG_DARK};")
 
     def resizeEvent(self, event):
         super().resizeEvent(event)
@@ -859,6 +887,8 @@ class LULCFilesCard(QFrame):
     def __init__(self, parent=None):
         super().__init__(parent)
         self.current_year = 1989
+        from backend.data_service import data_service
+        self.base_year, self.target_year = data_service.get_year_range()
         self.records = []
 
         self.setStyleSheet(f"""
@@ -879,11 +909,11 @@ class LULCFilesCard(QFrame):
 
         title_box = QVBoxLayout()
         title_box.setSpacing(2)
-        t_lbl = QLabel("LULC Project Files & 37-Year Master Dataset (1989–2026)")
-        t_lbl.setStyleSheet(f"font-size: 14px; font-weight: 800; color: {WARM_IVORY};")
+        self.t_lbl = QLabel(f"LULC Project Files & Master Dataset ({self.base_year}–{self.target_year})")
+        self.t_lbl.setStyleSheet(f"font-size: 14px; font-weight: 800; color: {WARM_IVORY};")
         s_lbl = QLabel("Ground-truth classification counts (LULC_Master_Counts.csv), documentation report, and river mouth opening measurements")
         s_lbl.setStyleSheet(f"font-size: 11px; color: {MUTED_SAGE};")
-        title_box.addWidget(t_lbl)
+        title_box.addWidget(self.t_lbl)
         title_box.addWidget(s_lbl)
         hdr_row.addLayout(title_box)
 
@@ -896,7 +926,8 @@ class LULCFilesCard(QFrame):
         self.btn_open_pdf.clicked.connect(self._open_master_pdf)
         hdr_row.addWidget(self.btn_open_pdf)
 
-        self.btn_export_csv = QPushButton("Download 37-Yr CSV")
+        yr_count = abs(self.target_year - self.base_year) + 1
+        self.btn_export_csv = QPushButton(f"Download {yr_count}-Yr CSV")
         self.btn_export_csv.setCursor(Qt.PointingHandCursor)
         self.btn_export_csv.setStyleSheet(self._action_btn_style())
         self.btn_export_csv.clicked.connect(self._export_master_csv)
@@ -959,6 +990,12 @@ class LULCFilesCard(QFrame):
 
         self._populate_table()
 
+    def set_year_range(self, base_year: int, target_year: int):
+        self.base_year = int(base_year)
+        self.target_year = int(target_year)
+        self.t_lbl.setText(f"LULC Project Files & Master Dataset ({self.base_year}–{self.target_year})")
+        self._populate_table()
+
     def _action_btn_style(self) -> str:
         return f"""
             QPushButton {{
@@ -978,7 +1015,9 @@ class LULCFilesCard(QFrame):
         """
 
     def _populate_table(self):
-        self.records = lulc_service.get_all_master_records()
+        all_recs = lulc_service.get_all_master_records()
+        self.records = [r for r in all_recs if self.base_year <= r["year"] <= self.target_year]
+        self.btn_export_csv.setText(f"Download {len(self.records)}-Yr CSV")
         self.table.setRowCount(len(self.records))
 
         for row_idx, r in enumerate(self.records):
@@ -1034,12 +1073,12 @@ class LULCFilesCard(QFrame):
             QMessageBox.warning(self, "PDF Report", "LULC_Master_Counts.pdf could not be located in project directory.")
 
     def _export_master_csv(self):
-        default_name = "Suvarna_LULC_Master_Counts_1989_2026.csv"
-        path, _ = QFileDialog.getSaveFileName(self, "Save 37-Year LULC Master Table", default_name, "CSV Files (*.csv)")
+        default_name = f"Suvarna_LULC_Master_Counts_{self.base_year}_{self.target_year}.csv"
+        path, _ = QFileDialog.getSaveFileName(self, f"Save {len(self.records)}-Year LULC Master Table", default_name, "CSV Files (*.csv)")
         if path:
-            ok, msg = lulc_service.export_all_years_csv(path)
+            ok, msg = lulc_service.export_filtered_years_csv(self.base_year, self.target_year, path)
             if ok:
-                QMessageBox.information(self, "Export Successful", f"Exported complete 37-year LULC master table to:\n{path}")
+                QMessageBox.information(self, "Export Successful", f"Exported {len(self.records)}-year LULC master table to:\n{path}")
             else:
                 QMessageBox.warning(self, "Export Failed", f"Could not export CSV:\n{msg}")
 
@@ -1047,12 +1086,17 @@ class LULCFilesCard(QFrame):
         files = lulc_service.get_lulc_files()
         csv_path = files.get("opening_results_csv", "")
         if csv_path and os.path.isfile(csv_path):
-            default_name = "Suvarna_First_Opening_Results.csv"
-            path, _ = QFileDialog.getSaveFileName(self, "Export First Opening Results", default_name, "CSV Files (*.csv)")
+            default_name = f"Suvarna_First_Opening_Results_{self.base_year}_{self.target_year}.csv"
+            path, _ = QFileDialog.getSaveFileName(self, f"Export First Opening Results ({self.base_year}–{self.target_year})", default_name, "CSV Files (*.csv)")
             if path:
                 try:
-                    import shutil
-                    shutil.copyfile(csv_path, path)
+                    df = pd.read_csv(csv_path)
+                    if "Year" in df.columns:
+                        df_f = df[(df["Year"] >= self.base_year) & (df["Year"] <= self.target_year)]
+                        df_f.to_csv(path, index=False)
+                    else:
+                        import shutil
+                        shutil.copyfile(csv_path, path)
                     QMessageBox.information(self, "Export Successful", f"Saved First Opening Results to:\n{path}")
                 except Exception as e:
                     QMessageBox.warning(self, "Export Failed", f"Error saving file: {e}")
@@ -1069,6 +1113,8 @@ class ResultPage(QWidget):
         self.stack = stack
         self.main_window = main_window
         self.current_year = 1989
+        self.base_year = 1989
+        self.target_year = 2000
         self.available_years = []
 
         # Root Horizontal Layout (Sidebar on Left + Content on Right)
@@ -1253,14 +1299,27 @@ class ResultPage(QWidget):
         title = QLabel("Land Use & Land Cover (LULC) Classification")
         title.setStyleSheet(f"font-size: 18px; font-weight: 800; color: {WARM_IVORY};")
 
-        subtitle = QLabel("Suvarna River Estuary • 4-Class Multi-Spectral & Deep Learning Classification (1989–2026)")
-        subtitle.setStyleSheet(f"font-size: 11px; color: {MUTED_SAGE};")
+        self.subtitle_lbl = QLabel(f"Suvarna River Estuary • 4-Class Multi-Spectral & Deep Learning Classification ({self.base_year}–{self.target_year})")
+        self.subtitle_lbl.setStyleSheet(f"font-size: 11px; color: {MUTED_SAGE};")
 
         text_layout.addWidget(title)
-        text_layout.addWidget(subtitle)
+        text_layout.addWidget(self.subtitle_lbl)
         layout.addLayout(text_layout)
 
         layout.addStretch()
+
+        # Read-only Centralized Range Badge
+        self.range_badge = QLabel(f"Range: {self.base_year}–{self.target_year}")
+        self.range_badge.setStyleSheet(f"""
+            background-color: {DARK_EMERALD};
+            color: {MINT};
+            border: 1px solid {BORDER_COLOR};
+            border-radius: 6px;
+            padding: 4px 10px;
+            font-size: 11px;
+            font-weight: 700;
+        """)
+        layout.addWidget(self.range_badge)
 
         # Year Selector
         lbl_year = QLabel("Select Year:")
@@ -1327,26 +1386,75 @@ class ResultPage(QWidget):
     # Data Initialization & Updates
     # ========================================================================
     def init_data(self):
-        """Loads available years and selects baseline year."""
-        self.available_years = lulc_service.get_available_years()
-        if not self.available_years:
-            self.available_years = [1989]
+        """Initializes LULC page using the centralized Home page year selection."""
+        b_yr = 1989
+        t_yr = 2000
+        if self.main_window and hasattr(self.main_window, "home_page") and hasattr(self.main_window.home_page, "get_selected_years"):
+            years = self.main_window.home_page.get_selected_years()
+            if years:
+                b_yr = years[0]
+                t_yr = years[-1] if len(years) > 1 else years[0]
+        self.set_year_range(b_yr, t_yr)
 
+    def set_year_range(self, base_year: int, target_year: int, selected_year: int = None):
+        """Sets the centralized Base Year and Prediction Year, filtering all LULC components."""
+        self.base_year = int(base_year)
+        self.target_year = int(target_year)
+        if self.base_year > self.target_year:
+            self.target_year = self.base_year
+        self.apply_year_filter(selected_year)
+
+    def apply_year_filter(self, selected_year: int = None):
+        """Applies the centralized year filter strictly across every LULC component."""
+        active_years = list(range(self.base_year, self.target_year + 1))
+        self.available_years = active_years
+
+        # Update header subtitle & range badge
+        if hasattr(self, "subtitle_lbl") and self.subtitle_lbl:
+            self.subtitle_lbl.setText(
+                f"Suvarna River Estuary • 4-Class Multi-Spectral & Deep Learning Classification ({self.base_year}–{self.target_year})"
+            )
+        if hasattr(self, "range_badge") and self.range_badge:
+            self.range_badge.setText(f"Range: {self.base_year}–{self.target_year}")
+
+        # Update year dropdown strictly to the selected range
         self.year_combo.blockSignals(True)
         self.year_combo.clear()
-        for y in self.available_years:
+        for y in active_years:
             self.year_combo.addItem(str(y))
+
+        # Determine target year to view
+        if selected_year is not None and self.base_year <= selected_year <= self.target_year:
+            self.current_year = selected_year
+        elif self.current_year < self.base_year or self.current_year > self.target_year:
+            self.current_year = self.target_year
+
+        idx = self.year_combo.findText(str(self.current_year))
+        if idx >= 0:
+            self.year_combo.setCurrentIndex(idx)
+        else:
+            self.year_combo.setCurrentText(str(self.current_year))
         self.year_combo.blockSignals(False)
 
-        # Set default year
-        if 1989 in self.available_years:
-            self.current_year = 1989
-            self.year_combo.setCurrentText("1989")
-        else:
-            self.current_year = self.available_years[0]
-            self.year_combo.setCurrentIndex(0)
+        # Update child components with filtered range
+        if hasattr(self, "chart_widget") and self.chart_widget:
+            self.chart_widget.set_year_range(self.base_year, self.target_year)
+        if hasattr(self, "files_card") and self.files_card:
+            self.files_card.set_year_range(self.base_year, self.target_year)
 
+        # Load data for current year
         self.load_year(self.current_year)
+
+    def showEvent(self, event):
+        super().showEvent(event)
+        # Always synchronize with Home page's selected Base Year and Prediction Year
+        if self.main_window and hasattr(self.main_window, "home_page") and hasattr(self.main_window.home_page, "get_selected_years"):
+            years = self.main_window.home_page.get_selected_years()
+            if years:
+                b_yr = years[0]
+                t_yr = years[-1] if len(years) > 1 else years[0]
+                if b_yr != self.base_year or t_yr != self.target_year:
+                    self.set_year_range(b_yr, t_yr)
 
     def select_year_from_child(self, year: int):
         """Called when a year is clicked in chart or table."""
@@ -1364,8 +1472,22 @@ class ResultPage(QWidget):
 
     def load_year(self, year: int):
         """Computes and updates cards, map, chart, and table for the selected year."""
+        self.current_year = year
         data = lulc_service.process_year(year)
         if not data:
+            self.card_veg.show_unavailable()
+            self.card_water.show_unavailable()
+            self.card_barren.show_unavailable()
+            self.card_built.show_unavailable()
+            self.map_card.show_unavailable(year)
+            if hasattr(self, "files_card"):
+                self.files_card.highlight_year(year)
+            if self.main_window and hasattr(self.main_window, "update_status"):
+                self.main_window.update_status(
+                    status_text=f"LULC Observation: Year {year} (Data Unavailable)",
+                    mode_text="4-Class Satellite Classification",
+                    readiness="LULC data unavailable for this year"
+                )
             return
 
         classes = data.get("classes", {})
@@ -1383,7 +1505,7 @@ class ResultPage(QWidget):
         # 2. Update LULC Results & Map Display
         self.map_card.set_lulc_data(data)
 
-        # 3. Update Comparison Chart across all 37 years
+        # 3. Update Comparison Chart across selected range
         self.chart_widget.set_data(data, current_year=year)
 
         # 4. Highlight Table Row
@@ -1423,11 +1545,9 @@ class ResultPage(QWidget):
     # ========================================================================
     def load_analysis(self, base_year, target_year, aoi_coords=None):
         """Called when user runs analysis from home page."""
-        target = int(target_year) if str(target_year).isdigit() else 1989
-        if target in self.available_years:
-            self.year_combo.setCurrentText(str(target))
-        else:
-            self.load_year(target)
+        b_yr = int(base_year) if str(base_year).isdigit() else 1989
+        t_yr = int(target_year) if str(target_year).isdigit() else 2000
+        self.set_year_range(b_yr, t_yr, selected_year=t_yr)
 
     # ========================================================================
     # Navigation Handlers

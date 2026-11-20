@@ -856,6 +856,24 @@ class WeatherPage(QWidget):
 
         return sidebar
 
+    def showEvent(self, event):
+        super().showEvent(event)
+        if self.main_window and hasattr(self.main_window, "home_page") and hasattr(self.main_window.home_page, "get_selected_years"):
+            years = self.main_window.home_page.get_selected_years()
+            if years and hasattr(self, "start_combo") and hasattr(self, "end_combo"):
+                b_str = str(years[0])
+                e_str = str(years[-1])
+                idx_b = self.start_combo.findText(b_str)
+                idx_e = self.end_combo.findText(e_str)
+                if idx_b >= 0 and idx_e >= 0:
+                    self.start_combo.blockSignals(True)
+                    self.end_combo.blockSignals(True)
+                    self.start_combo.setCurrentIndex(idx_b)
+                    self.end_combo.setCurrentIndex(idx_e)
+                    self.start_combo.blockSignals(False)
+                    self.end_combo.blockSignals(False)
+                    self.refresh_data()
+
     # ========================================================================
     # Data Loading & Range Updating
     # ========================================================================

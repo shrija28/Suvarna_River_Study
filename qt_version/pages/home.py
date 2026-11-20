@@ -1,5 +1,7 @@
 import os
+import re
 from PySide6.QtCore import Qt, QUrl, QObject, Slot
+from PySide6.QtGui import QIntValidator
 from PySide6.QtWebChannel import QWebChannel
 from PySide6.QtWidgets import (
     QWidget,
@@ -294,10 +296,16 @@ class HomePage(QWidget):
         by_label.setStyleSheet(f"font-size: 12px; color: {MUTED_SAGE};")
         right_layout.addWidget(by_label)
 
+        val = QIntValidator(1989, 2026, self)
+
         self.base_year = QComboBox()
         self.base_year.setEditable(True)
         self.base_year.addItems([str(y) for y in range(1989, 2027)])
         self.base_year.setCurrentText("1989")
+        self.base_year.setToolTip("Select baseline year (1989–2026) or enter observation year")
+        if self.base_year.lineEdit():
+            self.base_year.lineEdit().setPlaceholderText("1989")
+            self.base_year.lineEdit().setValidator(val)
         right_layout.addWidget(self.base_year)
 
         # Prediction Year
@@ -307,12 +315,19 @@ class HomePage(QWidget):
 
         self.prediction_year = QComboBox()
         self.prediction_year.setEditable(True)
+        self.prediction_year.setToolTip("Select prediction target year (1989–2026)")
+        if self.prediction_year.lineEdit():
+            self.prediction_year.lineEdit().setPlaceholderText("2000")
+            self.prediction_year.lineEdit().setValidator(val)
         right_layout.addWidget(self.prediction_year)
 
         self.update_prediction_years()
-        self.base_year.currentIndexChanged.connect(lambda: self.update_prediction_years())
+        self.base_year.currentIndexChanged.connect(self.update_prediction_years)
         if self.base_year.lineEdit():
-            self.base_year.lineEdit().editingFinished.connect(lambda: self.update_prediction_years())
+            self.base_year.lineEdit().editingFinished.connect(self.update_prediction_years)
+        self.prediction_year.currentIndexChanged.connect(self.on_year_selection_changed)
+        if self.prediction_year.lineEdit():
+            self.prediction_year.lineEdit().editingFinished.connect(self.on_year_selection_changed)
 
         right_layout.addSpacing(6)
 
@@ -446,6 +461,60 @@ class HomePage(QWidget):
         """)
         self.next_btn.clicked.connect(self.go_to_result)
         right_layout.addWidget(self.next_btn)
+
+        # Quick Direct Access to LULC Classification & Deviation Report
+        quick_nav_row = QHBoxLayout()
+        quick_nav_row.setSpacing(8)
+
+        self.btn_quick_lulc = QPushButton("LULC Analysis")
+        self.btn_quick_lulc.setIcon(get_icon("lulc", color=MINT, size=14))
+        self.btn_quick_lulc.setCursor(Qt.PointingHandCursor)
+        self.btn_quick_lulc.setFixedHeight(30)
+        self.btn_quick_lulc.setToolTip("Directly open Land Use / Land Cover Analysis for selected years")
+        self.btn_quick_lulc.setStyleSheet(f"""
+            QPushButton {{
+                background-color: {DARK_EMERALD};
+                color: {MINT};
+                border: 1px solid {BORDER_COLOR};
+                font-size: 11px;
+                font-weight: 600;
+                border-radius: 6px;
+                padding: 4px 8px;
+            }}
+            QPushButton:hover {{
+                background-color: {PANEL_GREEN};
+                border-color: {MINT};
+                color: {SOFT_LIME};
+            }}
+        """)
+        self.btn_quick_lulc.clicked.connect(self.go_to_lulc_direct)
+        quick_nav_row.addWidget(self.btn_quick_lulc)
+
+        self.btn_quick_dev = QPushButton("Deviation Report")
+        self.btn_quick_dev.setIcon(get_icon("analysis", color=MINT, size=14))
+        self.btn_quick_dev.setCursor(Qt.PointingHandCursor)
+        self.btn_quick_dev.setFixedHeight(30)
+        self.btn_quick_dev.setToolTip("Directly open River-Mouth Deviation & Displacement Analysis for selected years")
+        self.btn_quick_dev.setStyleSheet(f"""
+            QPushButton {{
+                background-color: {DARK_EMERALD};
+                color: {MINT};
+                border: 1px solid {BORDER_COLOR};
+                font-size: 11px;
+                font-weight: 600;
+                border-radius: 6px;
+                padding: 4px 8px;
+            }}
+            QPushButton:hover {{
+                background-color: {PANEL_GREEN};
+                border-color: {MINT};
+                color: {SOFT_LIME};
+            }}
+        """)
+        self.btn_quick_dev.clicked.connect(self.go_to_deviation_direct)
+        quick_nav_row.addWidget(self.btn_quick_dev)
+
+        right_layout.addLayout(quick_nav_row)
 
         main_layout.addWidget(right_panel, 3)
 
@@ -625,11 +694,119 @@ class HomePage(QWidget):
                     readiness="Offline Mode"
                 )
 
+    def get_base_year(self) -> int:
+        """Returns the currently selected Base Year, clamped to valid dataset bounds (1989-2026)."""
+        text = self.base_year.currentText().strip() if hasattr(self, "base_year") else "1989"
+        m = re.search(r"\b(19\d\d|20\d\d)\b", text)
+        val = int(m.group(1)) if m else 1989
+        return max(1989, min(2026, val))
+
+    def get_prediction_year(self) -> int:
+        """Returns the currently selected Prediction Target Year, clamped to valid dataset bounds (1989-2026)."""
+        text = self.prediction_year.currentText().strip() if hasattr(self, "prediction_year") else "2000"
+        m = re.findall(r"\b(19\d\d|20\d\d)\b", text)
+        val = int(m[-1]) if m else 2000
+        return max(1989, min(2026, val))
+
+    def on_year_selection_changed(self):
+        """Called when Base Year or Prediction Year changes; synchronizes global data service and status bar."""
+        b = self.get_base_year()
+        p = self.get_prediction_year()
+        from backend.data_service import data_service
+        data_service.set_year_range(b, p)
+        years = data_service.get_selected_years()
+        if self.main_window and hasattr(self.main_window, "update_status"):
+            if hasattr(self.main_window, "stack") and self.main_window.stack.currentIndex() == 0:
+                self.main_window.update_status(
+                    data_text=f"Range: {b}–{p} ({len(years)} yrs)"
+                )
+
     def update_prediction_years(self):
+        """
+        Updates the Prediction Year dropdown to ensure Base Year <= Prediction Year.
+        Populates single clean observation years from Base Year to 2026.
+        """
+        base_year = self.get_base_year()
+        current_pred = self.get_prediction_year()
+
+        self.prediction_year.blockSignals(True)
         self.prediction_year.clear()
-        base_year = int(self.base_year.currentText())
-        for year in range(base_year + 1, 2027):
+
+        # Add single sequential years from Base Year to 2026 (inclusive)
+        for year in range(base_year, 2027):
             self.prediction_year.addItem(str(year))
+
+        # Preserve previously selected prediction year if valid and >= base_year
+        if current_pred >= base_year:
+            idx = self.prediction_year.findText(str(current_pred))
+            if idx >= 0:
+                self.prediction_year.setCurrentIndex(idx)
+            else:
+                self.prediction_year.setCurrentText(str(current_pred))
+        else:
+            default_target = 2000 if (base_year <= 2000) else base_year
+            idx = self.prediction_year.findText(str(default_target))
+            if idx >= 0:
+                self.prediction_year.setCurrentIndex(idx)
+            else:
+                self.prediction_year.setCurrentIndex(0)
+
+        self.prediction_year.blockSignals(False)
+        self.on_year_selection_changed()
+
+    def get_selected_years(self) -> list[int]:
+        """
+        Returns the inclusive chronological year range between the selected Base Year and Prediction Year:
+        e.g., Base Year 1989 and Prediction Year 2000 -> [1989, 1990, ..., 2000].
+        Validation:
+        - Base Year must be earlier than or equal to Prediction Year.
+        - The range includes both the Base Year and Prediction Year.
+        - Clamps years to valid project observation bounds (1989 to 2026).
+        """
+        base_y = self.get_base_year()
+        pred_y = self.get_prediction_year()
+
+        # Enforce Base Year <= Prediction Year
+        if base_y > pred_y:
+            pred_y = base_y
+
+        return list(range(base_y, pred_y + 1))
+
+    @property
+    def selected_years(self) -> list[int]:
+        """The single source of truth for selected years on the Home page."""
+        return self.get_selected_years()
+
+    @selected_years.setter
+    def selected_years(self, years: list):
+        self.set_selected_years(years)
+
+    def set_selected_years(self, years: list):
+        """Sets the selected Base Year and Prediction Year directly on the Home page controls."""
+        if not years:
+            return
+        valid = []
+        for y in years:
+            try:
+                yi = int(str(y).strip())
+                if 1980 <= yi <= 2035 and yi not in valid:
+                    valid.append(yi)
+            except (ValueError, TypeError):
+                pass
+        valid.sort()
+        if not valid:
+            return
+
+        b_yr = valid[0]
+        p_yr = valid[-1]
+
+        self.base_year.blockSignals(True)
+        self.prediction_year.blockSignals(True)
+        self.base_year.setCurrentText(str(b_yr))
+        self.prediction_year.setCurrentText(str(p_yr))
+        self.base_year.blockSignals(False)
+        self.prediction_year.blockSignals(False)
+        self.update_prediction_years()
 
     def set_location(self, location_name, lat, lon):
         print(f"Location updated: {location_name} (Lat: {lat:.6f}, Lon: {lon:.6f})")
@@ -653,31 +830,88 @@ class HomePage(QWidget):
         )
 
     def go_to_result(self):
-        base_y = int(self.base_year.currentText())
-        target_y = int(self.prediction_year.currentText())
-        aoi = None
-        if self.north_lat.text() and self.south_lat.text():
-            try:
-                aoi = {
-                    "north": float(self.north_lat.text()),
-                    "south": float(self.south_lat.text()),
-                    "east": float(self.east_lon.text()),
-                    "west": float(self.west_lon.text())
-                }
-            except ValueError:
-                pass
+        """Primary action: Synchronizes all models and enters River Mouth Satellite Imagery & Deviation pipeline."""
+        try:
+            self.next_btn.setText("Opening Analysis...  →")
+            self.next_btn.setEnabled(False)
+            from PySide6.QtWidgets import QApplication
+            QApplication.processEvents()
 
-        print(f"Executing Analysis Workflow: Base={base_y}, Target={target_y}, AOI={aoi}")
-        if self.main_window and hasattr(self.main_window, "result_page"):
-            self.main_window.result_page.load_analysis(base_y, target_y, aoi)
+            selected_years = self.get_selected_years()
+            base_y = selected_years[0] if selected_years else 1989
+            target_y = selected_years[-1] if len(selected_years) > 1 else (selected_years[0] if selected_years else 2026)
+            aoi = None
+            if self.north_lat.text() and self.south_lat.text():
+                try:
+                    aoi = {
+                        "north": float(self.north_lat.text()),
+                        "south": float(self.south_lat.text()),
+                        "east": float(self.east_lon.text()),
+                        "west": float(self.west_lon.text())
+                    }
+                except ValueError:
+                    pass
+
+            print(f"Executing Analysis Workflow: Base={base_y}, Target={target_y}, Selected={selected_years}, AOI={aoi}")
             
-        if self.main_window and hasattr(self.main_window, "go_to_river_mouth"):
-            self.main_window.go_to_river_mouth()
-        elif self.main_window and hasattr(self.main_window, "run_analysis"):
-            self.main_window.run_analysis(base_y, target_y, aoi)
-        elif self.main_window and hasattr(self.main_window, "navigate_to_page"):
-            if hasattr(self.main_window, "result_page"):
-                self.main_window.result_page.load_analysis(base_y, target_y, aoi)
-            self.main_window.navigate_to_page(1)  # Index 1: LULC & Morphodynamics
-        else:
+            # Ensure centralized data service is updated
+            from backend.data_service import data_service
+            data_service.set_year_range(base_y, target_y)
+
+            # Route to primary analysis pipeline via main_window
+            if self.main_window:
+                if hasattr(self.main_window, "run_analysis"):
+                    self.main_window.run_analysis(base_y, target_y, aoi)
+                elif hasattr(self.main_window, "go_to_river_mouth"):
+                    self.main_window.go_to_river_mouth(selected_years)
+                elif hasattr(self.main_window, "navigate_to_page"):
+                    self.main_window.navigate_to_page(4)
+                elif self.stack:
+                    self.stack.setCurrentIndex(4)
+            elif self.stack:
+                self.stack.setCurrentIndex(4)
+        except Exception as e:
+            print(f"[HomePage] Error executing analysis navigation: {e}")
+            import traceback
+            traceback.print_exc()
+            if self.main_window and hasattr(self.main_window, "navigate_to_page"):
+                self.main_window.navigate_to_page(4)
+            elif self.stack:
+                self.stack.setCurrentIndex(4)
+        finally:
+            self.next_btn.setText("Next Step: Analysis  →")
+            self.next_btn.setEnabled(True)
+
+    def go_to_lulc_direct(self):
+        """Direct access: Navigates straight to LULC classification page for selected years."""
+        selected_years = self.get_selected_years()
+        base_y = selected_years[0] if selected_years else 1989
+        target_y = selected_years[-1] if len(selected_years) > 1 else 2026
+        from backend.data_service import data_service
+        data_service.set_year_range(base_y, target_y)
+        if self.main_window:
+            if hasattr(self.main_window, "go_to_lulc"):
+                self.main_window.go_to_lulc()
+            elif hasattr(self.main_window, "navigate_to_page"):
+                if hasattr(self.main_window, "result_page") and hasattr(self.main_window.result_page, "set_year_range"):
+                    self.main_window.result_page.set_year_range(base_y, target_y)
+                self.main_window.navigate_to_page(1)
+        elif self.stack:
             self.stack.setCurrentIndex(1)
+
+    def go_to_deviation_direct(self):
+        """Direct access: Navigates straight to River-Mouth Deviation & Displacement Analysis page."""
+        selected_years = self.get_selected_years()
+        base_y = selected_years[0] if selected_years else 1989
+        target_y = selected_years[-1] if len(selected_years) > 1 else 2026
+        from backend.data_service import data_service
+        data_service.set_year_range(base_y, target_y)
+        if self.main_window:
+            if hasattr(self.main_window, "go_to_analysis"):
+                self.main_window.go_to_analysis()
+            elif hasattr(self.main_window, "navigate_to_page"):
+                if hasattr(self.main_window, "deviation_page") and hasattr(self.deviation_page, "set_years"):
+                    self.main_window.deviation_page.set_years(base_y, target_y)
+                self.main_window.navigate_to_page(5)
+        elif self.stack:
+            self.stack.setCurrentIndex(5)

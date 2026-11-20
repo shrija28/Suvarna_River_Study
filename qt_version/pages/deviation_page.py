@@ -130,18 +130,25 @@ class DeviationMetricCard(QFrame):
 
 
 # ============================================================================
-# Custom Time-Series Displacement Chart Widget
+# Custom Time-Series Displacement & Water-Body Area Chart Widget
 # ============================================================================
-class DeviationTimeSeriesChart(QWidget):
+class DeviationTimeSeriesCanvas(QWidget):
     def __init__(self, parent=None):
         super().__init__(parent)
         self.dev_data = None
-        self.setMinimumHeight(280)
+        self.mode = "displacement"  # "displacement" or "water_area"
+        self.setMinimumHeight(240)
         self.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Expanding)
 
-    def set_data(self, dev_data):
+    def set_data(self, dev_data, mode: str = "displacement"):
         self.dev_data = dev_data
+        self.mode = mode
         self.update()
+
+    def set_mode(self, mode: str):
+        if self.mode != mode:
+            self.mode = mode
+            self.update()
 
     def paintEvent(self, event):
         p = QPainter(self)
@@ -159,47 +166,75 @@ class DeviationTimeSeriesChart(QWidget):
             p.end()
             return
 
-        ts = self.dev_data["timeseries"]
         base_y = self.dev_data["base_year"]
         target_y = self.dev_data["target_year"]
+        min_y = min(base_y, target_y)
+        max_y = max(base_y, target_y)
+
+        # Filter points strictly to the selected range [min_y, max_y]
+        ts = [item for item in self.dev_data["timeseries"] if min_y <= item["year"] <= max_y]
+        if not ts:
+            p.setPen(QColor(MUTED_SAGE))
+            p.setFont(QFont("Segoe UI", 12))
+            p.drawText(QRectF(0, 0, w, h), Qt.AlignCenter, f"No records available for range {min_y}–{max_y}")
+            p.end()
+            return
 
         # Margins
-        pad_left = 65
+        pad_left = 70
         pad_right = 35
-        pad_top = 40
-        pad_bottom = 45
+        pad_top = 35
+        pad_bottom = 40
 
         plot_w = max(50, w - pad_left - pad_right)
         plot_h = max(50, h - pad_top - pad_bottom)
 
-        # Title
-        p.setPen(QColor(WARM_IVORY))
-        p.setFont(QFont("Segoe UI", 12, QFont.Bold))
-        p.drawText(16, 24, f"River-Mouth Displacement Relative to Base Year {base_y} (1989–2026)")
-
         # Legend on top right
         p.setFont(QFont("Segoe UI", 9))
         p.setPen(QColor(MINT))
-        p.drawText(w - 240, 24, "● Ground Truth Landsat")
+        p.drawText(w - 240, 22, "● Ground Truth Landsat")
         p.setPen(QColor(AMBER))
-        p.drawText(w - 100, 24, "◆ AI Projection")
+        p.drawText(w - 100, 22, "◆ AI Projection")
 
-        # Range calculations
-        max_dist = max([item["displacement_m"] for item in ts] + [100.0])
-        y_max = max(100.0, ((int(max_dist) // 50) + 1) * 50.0)
+        # Range calculations depending on mode
+        if self.mode == "displacement":
+            vals = [item["displacement_m"] for item in ts if item.get("has_data", True)]
+            max_val = max(vals + [50.0])
+            y_max = max(50.0, ((int(max_val) // 50) + 1) * 50.0)
+            y_min = 0.0
+            unit_str = "m"
+        else:
+            # Water Area mode
+            vals = [item["water_area_km2"] for item in ts if item.get("has_data", True) and item["year"] != 1995]
+            if vals:
+                min_a = min(vals)
+                max_a = max(vals)
+                span = max(0.4, max_a - min_a)
+                y_min = max(0.0, min_a - 0.25 * span)
+                y_max = max_a + 0.25 * span
+            else:
+                y_min = 10.0
+                y_max = 15.0
+            unit_str = "km²"
+
+        val_range = max(0.001, y_max - y_min)
 
         # Grid lines (4 intervals)
         p.setFont(QFont("Segoe UI", 9))
         for i in range(5):
-            val = (i / 4.0) * y_max
-            y_pos = pad_top + plot_h - (val / y_max) * plot_h
+            val = y_min + (i / 4.0) * val_range
+            y_pos = pad_top + plot_h - ((val - y_min) / val_range) * plot_h
             p.setPen(QPen(QColor(BORDER_SUBTLE), 1, Qt.DashLine))
             p.drawLine(pad_left, int(y_pos), pad_left + plot_w, int(y_pos))
 
             p.setPen(QColor(MUTED_SAGE))
-            p.drawText(pad_left - 55, int(y_pos + 4), f"{val:.0f} m")
+            if self.mode == "displacement":
+                lbl_text = f"{val:.0f} {unit_str}"
+            else:
+                lbl_text = f"{val:.2f} {unit_str}"
+            p.drawText(pad_left - 62, int(y_pos + 4), lbl_text)
 
-        # Baseline axis
+        # Baseline axes
         p.setPen(QPen(QColor(BORDER_COLOR), 1.5))
         p.drawLine(pad_left, pad_top + plot_h, pad_left + plot_w, pad_top + plot_h)
         p.drawLine(pad_left, pad_top, pad_left, pad_top + plot_h)
@@ -209,55 +244,58 @@ class DeviationTimeSeriesChart(QWidget):
         n_pts = len(ts)
         for i, item in enumerate(ts):
             x = pad_left + (i / max(1, n_pts - 1)) * plot_w
-            y = pad_top + plot_h - (item["displacement_m"] / y_max) * plot_h
-            coords.append((x, y, item))
-
-        # Separate historical vs AI projection segments
-        hist_coords = [c for c in coords if not c[2]["is_projection"]]
-        proj_coords = [c for c in coords if c[2]["is_projection"]]
+            curr_v = item["displacement_m"] if self.mode == "displacement" else item["water_area_km2"]
+            y = pad_top + plot_h - ((curr_v - y_min) / val_range) * plot_h
+            coords.append((x, y, item, curr_v))
 
         # Fill area under curve (valid measurement years)
-        valid_coords = [c for c in coords if c[2].get("has_data", True)]
+        valid_coords = [c for c in coords if c[2].get("has_data", True) and c[2]["year"] != 1995]
         if len(valid_coords) > 1:
             area_path = QPainterPath()
             area_path.moveTo(valid_coords[0][0], pad_top + plot_h)
-            for x, y, _ in valid_coords:
+            for x, y, _, _ in valid_coords:
                 area_path.lineTo(x, y)
             area_path.lineTo(valid_coords[-1][0], pad_top + plot_h)
             area_path.closeSubpath()
 
             grad = QLinearGradient(0, pad_top, 0, pad_top + plot_h)
-            grad.setColorAt(0.0, QColor(0, 191, 165, 80))
-            grad.setColorAt(1.0, QColor(0, 191, 165, 5))
+            if self.mode == "displacement":
+                grad.setColorAt(0.0, QColor(0, 191, 165, 80))
+                grad.setColorAt(1.0, QColor(0, 191, 165, 5))
+            else:
+                grad.setColorAt(0.0, QColor(30, 136, 229, 85))
+                grad.setColorAt(1.0, QColor(30, 136, 229, 5))
             p.fillPath(area_path, grad)
 
-        # Draw Historical Line (connecting valid observation years)
-        valid_hist_coords = [c for c in coords if not c[2]["is_projection"] and c[2].get("has_data", True)]
+        # Draw Historical Line
+        valid_hist_coords = [c for c in valid_coords if not c[2]["is_projection"]]
         if len(valid_hist_coords) > 1:
             line_path = QPainterPath()
             line_path.moveTo(valid_hist_coords[0][0], valid_hist_coords[0][1])
-            for x, y, _ in valid_hist_coords[1:]:
+            for x, y, _, _ in valid_hist_coords[1:]:
                 line_path.lineTo(x, y)
-            p.setPen(QPen(QColor(TEAL), 2.5))
+            line_color = QColor(TEAL) if self.mode == "displacement" else QColor("#42A5F5")
+            p.setPen(QPen(line_color, 2.5))
             p.drawPath(line_path)
 
         # Draw Projection Connection Line (Dashed in Amber)
+        proj_coords = [c for c in valid_coords if c[2]["is_projection"]]
         if proj_coords and valid_hist_coords:
             p_path = QPainterPath()
             p_path.moveTo(valid_hist_coords[-1][0], valid_hist_coords[-1][1])
-            for x, y, _ in proj_coords:
+            for x, y, _, _ in proj_coords:
                 p_path.lineTo(x, y)
             p.setPen(QPen(QColor(AMBER), 2.5, Qt.DashLine))
             p.drawPath(p_path)
 
         # Draw Data Points & X-Axis Labels
         step_lbl = max(1, n_pts // 8)
-        for i, (x, y, item) in enumerate(coords):
+        for i, (x, y, item, curr_v) in enumerate(coords):
             yr = item["year"]
             is_proj = item["is_projection"]
-            is_base = item["is_base"]
-            is_target = item["is_target"]
-            has_data = item.get("has_data", True)
+            is_base = (yr == base_y)
+            is_target = (yr == target_y)
+            has_data = item.get("has_data", True) and (yr != 1995)
 
             # X-axis year label
             if i % step_lbl == 0 or is_base or is_target or i == n_pts - 1 or yr == 1995:
@@ -267,16 +305,16 @@ class DeviationTimeSeriesChart(QWidget):
 
             # Point Node
             if not has_data or yr == 1995:
-                # 1995: Strictly Zero / No Data marker on baseline
+                # 1995: Zero / No Data marker on baseline
                 p.setPen(QPen(QColor(AMBER), 1.5, Qt.DotLine))
                 p.setBrush(Qt.NoBrush)
                 p.drawEllipse(QPointF(x, pad_top + plot_h), 4, 4)
                 p.setFont(QFont("Segoe UI", 8))
                 p.setPen(QColor(AMBER))
-                p.drawText(int(x - 16), pad_top + plot_h - 8, "0m (NaN)")
+                p.drawText(int(x - 16), pad_top + plot_h - 8, "NaN")
                 continue
 
-            pt_color = QColor(AMBER) if is_proj else QColor(MINT)
+            pt_color = QColor(AMBER) if is_proj else (QColor(MINT) if self.mode == "displacement" else QColor("#42A5F5"))
             if is_base or is_target:
                 p.setPen(QPen(QColor(WARM_IVORY), 2))
                 p.setBrush(QBrush(pt_color))
@@ -284,12 +322,12 @@ class DeviationTimeSeriesChart(QWidget):
                 # Value callout
                 p.setFont(QFont("Segoe UI", 9, QFont.Bold))
                 p.setPen(QColor(WARM_IVORY))
-                p.drawText(int(x - 20), int(y - 10), f"{item['displacement_m']:.0f}m")
+                val_txt = f"{curr_v:.1f}m" if self.mode == "displacement" else f"{curr_v:.2f}km²"
+                p.drawText(int(x - 24), int(y - 10), val_txt)
             else:
                 p.setPen(QPen(QColor(BG_DARK), 1.5))
                 p.setBrush(QBrush(pt_color))
                 if is_proj:
-                    # Diamond for projection
                     poly = QPainterPath()
                     poly.moveTo(x, y - 4)
                     poly.lineTo(x + 4, y)
@@ -301,6 +339,137 @@ class DeviationTimeSeriesChart(QWidget):
                     p.drawEllipse(QPointF(x, y), 3.5, 3.5)
 
         p.end()
+
+
+class DeviationTimeSeriesChart(QFrame):
+    def __init__(self, parent=None):
+        super().__init__(parent)
+        self.dev_data = None
+        self.current_mode = "displacement"
+
+        self.setStyleSheet(f"""
+            DeviationTimeSeriesChart {{
+                background-color: {PANEL_SURFACE};
+                border: 1px solid {BORDER_COLOR};
+                border-radius: 8px;
+            }}
+        """)
+
+        layout = QVBoxLayout(self)
+        layout.setContentsMargins(14, 12, 14, 12)
+        layout.setSpacing(8)
+
+        # Header Row with Title and Mode Toggle
+        hdr_row = QHBoxLayout()
+        hdr_row.setSpacing(8)
+
+        self.title_lbl = QLabel("River-Mouth Displacement Relative to Base Year")
+        self.title_lbl.setStyleSheet(f"font-size: 13px; font-weight: 700; color: {WARM_IVORY};")
+        hdr_row.addWidget(self.title_lbl)
+        hdr_row.addStretch()
+
+        # Mode Toggle Buttons
+        toggle_box = QFrame()
+        toggle_box.setStyleSheet(f"""
+            QFrame {{
+                background-color: {DARK_EMERALD};
+                border: 1px solid {BORDER_SUBTLE};
+                border-radius: 4px;
+            }}
+        """)
+        t_layout = QHBoxLayout(toggle_box)
+        t_layout.setContentsMargins(2, 2, 2, 2)
+        t_layout.setSpacing(4)
+
+        self.btn_disp = QPushButton("📏 Displacement (m)")
+        self.btn_disp.setFixedHeight(24)
+        self.btn_disp.setCursor(Qt.PointingHandCursor)
+        self.btn_disp.clicked.connect(lambda: self.set_mode("displacement"))
+        t_layout.addWidget(self.btn_disp)
+
+        self.btn_area = QPushButton("🌊 Water Area (km²)")
+        self.btn_area.setFixedHeight(24)
+        self.btn_area.setCursor(Qt.PointingHandCursor)
+        self.btn_area.clicked.connect(lambda: self.set_mode("water_area"))
+        t_layout.addWidget(self.btn_area)
+
+        hdr_row.addWidget(toggle_box)
+        layout.addLayout(hdr_row)
+
+        # Canvas
+        self.canvas = DeviationTimeSeriesCanvas(self)
+        layout.addWidget(self.canvas, 1)
+
+        self._update_toggle_styles()
+
+    def _update_toggle_styles(self):
+        active_disp = f"""
+            QPushButton {{
+                background-color: {TEAL};
+                color: #FFFFFF;
+                font-size: 11px;
+                font-weight: 700;
+                border: none;
+                border-radius: 3px;
+                padding: 2px 10px;
+            }}
+        """
+        active_area = f"""
+            QPushButton {{
+                background-color: #1E88E5;
+                color: #FFFFFF;
+                font-size: 11px;
+                font-weight: 700;
+                border: none;
+                border-radius: 3px;
+                padding: 2px 10px;
+            }}
+        """
+        inactive = f"""
+            QPushButton {{
+                background-color: transparent;
+                color: {MUTED_SAGE};
+                font-size: 11px;
+                font-weight: 600;
+                border: none;
+                border-radius: 3px;
+                padding: 2px 10px;
+            }}
+            QPushButton:hover {{
+                color: {WARM_IVORY};
+            }}
+        """
+        if self.current_mode == "displacement":
+            self.btn_disp.setStyleSheet(active_disp)
+            self.btn_area.setStyleSheet(inactive)
+        else:
+            self.btn_disp.setStyleSheet(inactive)
+            self.btn_area.setStyleSheet(active_area)
+
+    def set_mode(self, mode: str):
+        if self.current_mode == mode:
+            return
+        self.current_mode = mode
+        self._update_toggle_styles()
+        self._update_title()
+        self.canvas.set_mode(mode)
+
+    def _update_title(self):
+        if not self.dev_data:
+            return
+        b = self.dev_data.get("base_year", 1989)
+        t = self.dev_data.get("target_year", 2000)
+        min_y = min(b, t)
+        max_y = max(b, t)
+        if self.current_mode == "displacement":
+            self.title_lbl.setText(f"River-Mouth Displacement ({min_y}–{max_y}) Relative to Base {b}")
+        else:
+            self.title_lbl.setText(f"Estuarine Water-Body Surface Area ({min_y}–{max_y})")
+
+    def set_data(self, dev_data):
+        self.dev_data = dev_data
+        self._update_title()
+        self.canvas.set_data(dev_data, mode=self.current_mode)
 
 
 # ============================================================================
@@ -522,21 +691,21 @@ class RiverMouthDeviationPage(QWidget):
         header_bar = self.build_header_toolbar()
         self.content_layout.addWidget(header_bar)
 
-        # 5 Summary Cards Row: Meters, Latitude, Longitude, Direction, Water Area
+        # 5 Summary Cards Row: Base Year, Prediction Year, Displacement, Water Area, Direction
         cards_row = QHBoxLayout()
         cards_row.setSpacing(10)
 
-        self.card_disp = DeviationMetricCard("Difference in Meters", TEAL, "Total Euclidean spatial displacement")
-        self.card_lat = DeviationMetricCard("Difference in Latitude", MINT, "Northing displacement along meridian")
-        self.card_lon = DeviationMetricCard("Difference in Longitude", SOFT_LIME, "Easting displacement along parallel")
-        self.card_dir = DeviationMetricCard("Displacement Direction", AMBER, "Azimuth bearing relative to True North")
-        self.card_area = DeviationMetricCard("Water Area & Migration", "#1E88E5", "Net channel surface area difference")
+        self.card_base = DeviationMetricCard("Base Year", TEAL, "Baseline reference observation")
+        self.card_target = DeviationMetricCard("Prediction Year", MINT, "Target observation / projection")
+        self.card_disp = DeviationMetricCard("Total Displacement", SOFT_LIME, "Total measured displacement in metres")
+        self.card_area = DeviationMetricCard("Water Area Change", "#1E88E5", "Net estuarine surface water change (km²)")
+        self.card_dir = DeviationMetricCard("Movement Direction", AMBER, "Compass heading & azimuth bearing")
 
+        cards_row.addWidget(self.card_base)
+        cards_row.addWidget(self.card_target)
         cards_row.addWidget(self.card_disp)
-        cards_row.addWidget(self.card_lat)
-        cards_row.addWidget(self.card_lon)
-        cards_row.addWidget(self.card_dir)
         cards_row.addWidget(self.card_area)
+        cards_row.addWidget(self.card_dir)
         self.content_layout.addLayout(cards_row)
 
         # Middle Grid: Comparison Cards (Left) + Time-Series Chart (Right)
@@ -651,93 +820,86 @@ class RiverMouthDeviationPage(QWidget):
         layout.setContentsMargins(8, 4, 8, 4)
         layout.setSpacing(14)
 
-        # Title & Subtitle (Clean header, no buttons)
+        # Title (Clean header, no buttons)
         text_layout = QVBoxLayout()
         text_layout.setSpacing(2)
 
         title = QLabel("River-Mouth Deviation & Morphodynamic Analysis")
         title.setStyleSheet(f"font-size: 17px; font-weight: 800; color: {WARM_IVORY};")
 
-        subtitle = QLabel("Kodi Bengre Estuary • Multi-Decadal Displacement, Directional Azimuth & Channel Geomorphology")
-        subtitle.setStyleSheet(f"font-size: 11px; color: {MUTED_SAGE};")
-
         text_layout.addWidget(title)
-        text_layout.addWidget(subtitle)
         layout.addLayout(text_layout)
 
         layout.addStretch()
 
-        # Base Year Selector (Editable with manual entry)
-        lbl_base = QLabel("Base:")
-        lbl_base.setStyleSheet(f"font-size: 12px; font-weight: 600; color: {MUTED_SAGE};")
-        layout.addWidget(lbl_base)
+        # Centralized Active Global Year Display (Read-only, synchronized from Home page)
+        self.year_badge_frame = QFrame()
+        self.year_badge_frame.setStyleSheet(f"""
+            QFrame {{
+                background-color: {DARK_EMERALD};
+                border: 1px solid {BORDER_COLOR};
+                border-radius: 6px;
+                padding: 4px 12px;
+            }}
+        """)
+        badge_layout = QHBoxLayout(self.year_badge_frame)
+        badge_layout.setContentsMargins(8, 4, 8, 4)
+        badge_layout.setSpacing(8)
 
-        val = QIntValidator(1980, 2035, self)
+        lbl_base_title = QLabel("Base:")
+        lbl_base_title.setStyleSheet(f"font-size: 12px; font-weight: 600; color: {MUTED_SAGE};")
+        badge_layout.addWidget(lbl_base_title)
 
-        self.combo_base = QComboBox()
-        self.combo_base.setFixedWidth(95)
-        self.combo_base.setEditable(True)
-        self.combo_base.setValidator(val)
-        if self.combo_base.lineEdit():
-            self.combo_base.lineEdit().setPlaceholderText("YYYY")
-        self.style_combo(self.combo_base)
-        layout.addWidget(self.combo_base)
+        self.lbl_base_val = QLabel(str(self.base_year))
+        self.lbl_base_val.setStyleSheet(f"font-size: 13px; font-weight: 800; color: {WARM_IVORY};")
+        badge_layout.addWidget(self.lbl_base_val)
 
-        # Arrow indicator
         arrow_lbl = QLabel("→")
-        arrow_lbl.setStyleSheet(f"font-size: 14px; font-weight: 700; color: {MINT};")
-        layout.addWidget(arrow_lbl)
+        arrow_lbl.setStyleSheet(f"font-size: 13px; font-weight: 700; color: {MINT};")
+        badge_layout.addWidget(arrow_lbl)
 
-        # Target Year Selector (Editable with manual entry)
-        lbl_target = QLabel("Target:")
-        lbl_target.setStyleSheet(f"font-size: 12px; font-weight: 600; color: {MUTED_SAGE};")
-        layout.addWidget(lbl_target)
+        lbl_target_title = QLabel("Target:")
+        lbl_target_title.setStyleSheet(f"font-size: 12px; font-weight: 600; color: {MUTED_SAGE};")
+        badge_layout.addWidget(lbl_target_title)
 
-        self.combo_target = QComboBox()
-        self.combo_target.setFixedWidth(95)
-        self.combo_target.setEditable(True)
-        self.combo_target.setValidator(val)
-        if self.combo_target.lineEdit():
-            self.combo_target.lineEdit().setPlaceholderText("YYYY")
-        self.style_combo(self.combo_target)
-        layout.addWidget(self.combo_target)
+        self.lbl_target_val = QLabel(str(self.target_year))
+        self.lbl_target_val.setStyleSheet(f"font-size: 13px; font-weight: 800; color: {WARM_IVORY};")
+        badge_layout.addWidget(self.lbl_target_val)
 
-        # Connect both year selectors for instant, automatic analysis on selection/edit
-        self.combo_base.currentTextChanged.connect(self.on_year_selection_changed)
-        self.combo_target.currentTextChanged.connect(self.on_year_selection_changed)
+        layout.addWidget(self.year_badge_frame)
 
-        return bar
-
-    def style_combo(self, combo: QComboBox):
-        combo.setStyleSheet(f"""
-            QComboBox {{
+        # Export Analysis Button in Header Toolbar
+        self.btn_export = QPushButton("Export Analysis  ▾")
+        self.btn_export.setIcon(get_icon("download", color=WARM_IVORY, size=14))
+        self.btn_export.setCursor(Qt.PointingHandCursor)
+        self.btn_export.setFixedHeight(32)
+        self.btn_export.setStyleSheet(f"""
+            QPushButton {{
                 background-color: {DARK_EMERALD};
                 color: {WARM_IVORY};
                 border: 1px solid {BORDER_COLOR};
                 border-radius: 6px;
-                padding: 4px 8px;
-                font-size: 12px;
+                padding: 4px 14px;
+                font-size: 11px;
                 font-weight: 700;
             }}
-            QComboBox:hover {{
+            QPushButton:hover {{
+                background-color: {PANEL_GREEN};
                 border-color: {MINT};
-            }}
-            QComboBox QLineEdit {{
-                background: transparent;
-                color: {WARM_IVORY};
-                border: none;
-                font-size: 12px;
-                font-weight: 700;
-            }}
-            QComboBox QAbstractItemView {{
-                background-color: {DARK_EMERALD};
-                color: {WARM_IVORY};
-                selection-background-color: {PANEL_GREEN};
-                selection-color: {SOFT_LIME};
-                border: 1px solid {BORDER_COLOR};
-                padding: 4px;
+                color: {MINT};
             }}
         """)
+        self.btn_export.clicked.connect(self.show_export_menu)
+        layout.addWidget(self.btn_export)
+
+        return bar
+
+    def update_year_display(self):
+        """Updates the read-only year indicators to match the centralized Home page selection."""
+        if hasattr(self, "lbl_base_val"):
+            self.lbl_base_val.setText(str(self.base_year))
+        if hasattr(self, "lbl_target_val"):
+            self.lbl_target_val.setText(str(self.target_year))
 
     # ========================================================================
     # Results & Timeseries Table Section
@@ -758,9 +920,9 @@ class RiverMouthDeviationPage(QWidget):
 
         # Table Header
         h_row = QHBoxLayout()
-        t_lbl = QLabel("Historical & Model-Projected River-Mouth Width & Shift Measurements")
-        t_lbl.setStyleSheet(f"font-size: 13px; font-weight: 700; color: {WARM_IVORY};")
-        h_row.addWidget(t_lbl)
+        self.table_title_lbl = QLabel("River-Mouth Displacement & Geomorphic Measurements")
+        self.table_title_lbl.setStyleSheet(f"font-size: 13px; font-weight: 700; color: {WARM_IVORY};")
+        h_row.addWidget(self.table_title_lbl)
         h_row.addStretch()
 
         self.filter_input = QLineEdit()
@@ -782,17 +944,17 @@ class RiverMouthDeviationPage(QWidget):
         self.filter_input.textChanged.connect(self.on_filter_changed)
         h_row.addWidget(self.filter_input)
 
-        self.table_note = QLabel("1 to 38 of 38 entries")
+        self.table_note = QLabel("")
         self.table_note.setStyleSheet(f"font-size: 11px; color: {MUTED_SAGE}; font-family: 'Consolas', monospace;")
         h_row.addWidget(self.table_note)
         layout.addLayout(h_row)
 
         # Table Widget
         self.table = QTableWidget()
-        self.table.setColumnCount(7)
+        self.table.setColumnCount(8)
         self.table.setHorizontalHeaderLabels([
-            "Index", "Year", "Mouth Width (m)", "Longitude", "Latitude",
-            "East Shift (m)", "North Shift (m)"
+            "Year", "Coordinates (WGS84)", "Displacement (m)", "Water Area (km²)",
+            "Mouth Width (m)", "East Shift (m)", "North Shift (m)", "Data Status"
         ])
         self.table.horizontalHeader().setSectionResizeMode(QHeaderView.Stretch)
         self.table.verticalHeader().setVisible(False)
@@ -835,46 +997,36 @@ class RiverMouthDeviationPage(QWidget):
         if not self.available_years:
             self.available_years = [1989, 2026]
 
-        self.combo_base.blockSignals(True)
-        self.combo_target.blockSignals(True)
-        self.combo_base.clear()
-        self.combo_target.clear()
+        # Synchronize with master Home page selection
+        if self.main_window and hasattr(self.main_window, "home_page") and hasattr(self.main_window.home_page, "get_selected_years"):
+            years = self.main_window.home_page.get_selected_years()
+            if years:
+                self.base_year = years[0]
+                self.target_year = years[-1] if len(years) > 1 else years[0]
 
-        for y in self.available_years:
-            if y != 1995:
-                self.combo_base.addItem(str(y))
-            self.combo_target.addItem(str(y))
-
-        # Default: Base = 1989, Target = 2026 (or highest year)
-        if 1989 in self.available_years:
-            self.combo_base.setCurrentText("1989")
-        else:
-            self.combo_base.setCurrentIndex(0)
-
-        if 2026 in self.available_years:
-            self.combo_target.setCurrentText("2026")
-        else:
-            self.combo_target.setCurrentIndex(len(self.available_years) - 1)
-
-        self.combo_base.blockSignals(False)
-        self.combo_target.blockSignals(False)
-
+        self.update_year_display()
         self.run_analysis()
 
-    def on_year_selection_changed(self, _=""):
-        b_txt = self.combo_base.currentText().strip()
-        t_txt = self.combo_target.currentText().strip()
-        if b_txt.isdigit() and t_txt.isdigit():
-            b_yr = int(b_txt)
-            t_yr = int(t_txt)
-            if 1980 <= b_yr <= 2035 and 1980 <= t_yr <= 2035:
+    def showEvent(self, event):
+        super().showEvent(event)
+        # Always synchronize with Home page's selected Base Year and Prediction Year
+        if self.main_window and hasattr(self.main_window, "home_page") and hasattr(self.main_window.home_page, "get_selected_years"):
+            years = self.main_window.home_page.get_selected_years()
+            if years:
+                b_yr = years[0]
+                t_yr = years[-1] if len(years) > 1 else years[0]
                 if b_yr != self.base_year or t_yr != self.target_year:
                     self.base_year = b_yr
                     self.target_year = t_yr
+                    self.update_year_display()
                     self.run_analysis()
 
-    def on_run_analysis_clicked(self):
-        self.on_year_selection_changed()
+    def set_years(self, base_year: int, target_year: int):
+        """Programmatic setter to synchronize years from central application controller."""
+        self.base_year = int(base_year)
+        self.target_year = int(target_year)
+        self.update_year_display()
+        self.run_analysis()
 
     def run_analysis(self):
         dev = deviation_service.calculate_deviation(self.base_year, self.target_year)
@@ -884,7 +1036,7 @@ class RiverMouthDeviationPage(QWidget):
 
         self.current_deviation = dev
 
-        # 1. Update 5 Summary Cards: Difference in Meters, Latitude, Longitude, Direction, Water Area
+        # 1. Update 5 Summary Cards: Base Year, Prediction Year, Displacement, Water Area, Direction
         dist_m = dev["displacement_m"]
         dir_lbl = dev["direction_label"]
         dx = dev["dx_m"]
@@ -898,41 +1050,45 @@ class RiverMouthDeviationPage(QWidget):
 
         ns = "North" if dy > 0 else ("South" if dy < 0 else "Zero")
         ew = "East" if dx > 0 else ("West" if dx < 0 else "Zero")
+        sign = "+" if d_area > 0 else ""
 
-        # Card 1: Difference in Meters
+        # Card 1: Base Year
+        base_w = dev['base_data'].get('opening_width_m', 0.0)
+        base_w_str = f"{base_w:.1f}m" if base_w > 0 else "--"
+        self.card_base.set_content(
+            str(self.base_year),
+            f"Mouth: {dev['base_data']['mouth_lat']:.4f}°N, {dev['base_data']['mouth_lon']:.4f}°E",
+            f"Width: {base_w_str} | Water Area: {dev['base_water_area_km2']:.2f} km²"
+        )
+
+        # Card 2: Prediction Year
+        targ_w = dev['target_data'].get('opening_width_m', 0.0)
+        targ_w_str = f"{targ_w:.1f}m" if targ_w > 0 else "--"
+        self.card_target.set_content(
+            str(self.target_year),
+            f"Mouth: {dev['target_data']['mouth_lat']:.4f}°N, {dev['target_data']['mouth_lon']:.4f}°E",
+            f"Width: {targ_w_str} | Water Area: {dev['target_water_area_km2']:.2f} km²"
+        )
+
+        # Card 3: Total Measured Displacement
         self.card_disp.set_content(
             f"{dist_m:.1f} m",
             f"ΔX: {dx:+.1f}m | ΔY: {dy:+.1f}m",
-            f"Total Euclidean displacement: {self.base_year} → {self.target_year}"
+            f"Rate: {rate:.2f} m/yr over {dt} yrs ({self.base_year} → {self.target_year})"
         )
 
-        # Card 2: Difference in Latitude
-        self.card_lat.set_content(
-            f"{d_lat:+.6f}°",
-            f"ΔY: {dy:+.1f}m ({ns})",
-            f"Base: {dev['base_data']['mouth_lat']:.4f}°N → Target: {dev['target_data']['mouth_lat']:.4f}°N"
-        )
-
-        # Card 3: Difference in Longitude
-        self.card_lon.set_content(
-            f"{d_lon:+.6f}°",
-            f"ΔX: {dx:+.1f}m ({ew})",
-            f"Base: {dev['base_data']['mouth_lon']:.4f}°E → Target: {dev['target_data']['mouth_lon']:.4f}°E"
-        )
-
-        # Card 4: Displacement Direction
-        self.card_dir.set_content(
-            dev["direction_name"],
-            f"Azimuth: {dev['azimuth_deg']:.0f}°",
-            f"Displacement vector: {dir_lbl}"
-        )
-
-        # Card 5: Water Area & Migration Rate
-        sign = "+" if d_area > 0 else ""
+        # Card 4: Water-Body Area Change
         self.card_area.set_content(
             f"{sign}{d_area:.2f} km²",
-            f"{sign}{d_pct:.1f}% | {rate:.2f} m/yr",
-            f"{dev['base_water_area_km2']:.2f} km² → {dev['target_water_area_km2']:.2f} km² (over {dt} yrs)"
+            f"{sign}{d_pct:.1f}% relative change",
+            f"{dev['base_water_area_km2']:.2f} km² → {dev['target_water_area_km2']:.2f} km²"
+        )
+
+        # Card 5: Movement Direction
+        self.card_dir.set_content(
+            dev["direction_name"],
+            f"Azimuth: {dev['azimuth_deg']:.0f}° ({dir_lbl})",
+            f"{ns}ward & {ew}ward migration vector"
         )
 
         # 2. Update Comparison View
@@ -941,90 +1097,93 @@ class RiverMouthDeviationPage(QWidget):
         # 3. Update Time-Series Chart
         self.chart_widget.set_data(dev)
 
-        # 4. Populate Historical Measurements Table (7-Column Format matching Image 2)
-        df_table = deviation_service.load_mouth_width_shift_df()
-        if not df_table.empty:
-            self.table.setRowCount(len(df_table))
-            for r_idx, row in df_table.iterrows():
-                idx_val = int(row["Index"])
-                yr_val = int(row["Year"])
+        # 4. Populate Historical Measurements Table (Strictly filtered between Base Year and Prediction Year)
+        min_y = min(self.base_year, self.target_year)
+        max_y = max(self.base_year, self.target_year)
+        self.table_title_lbl.setText(f"River-Mouth Displacement & Geomorphic Measurements ({min_y}–{max_y})")
 
-                # Format Mouth Width (m)
-                w_raw = row["Mouth Width (m)"]
-                if pd.isna(w_raw):
-                    w_str = "NaN"
-                elif float(w_raw) == int(float(w_raw)):
-                    w_str = f"{float(w_raw):.1f}"
+        filtered_ts = [r for r in dev["timeseries"] if min_y <= r["year"] <= max_y]
+        self.table.setRowCount(len(filtered_ts))
+
+        for r_idx, r in enumerate(filtered_ts):
+            yr = r["year"]
+            has_data = r.get("has_data", True) and (yr != 1995)
+
+            # Year
+            item_yr = QTableWidgetItem(str(yr))
+            item_yr.setTextAlignment(Qt.AlignCenter)
+
+            # Coordinates (WGS84)
+            if has_data:
+                coords_str = f"{r['mouth_lat']:.6f}°N, {r['mouth_lon']:.6f}°E"
+            else:
+                coords_str = "Data Unavailable"
+            item_coords = QTableWidgetItem(coords_str)
+            item_coords.setTextAlignment(Qt.AlignCenter)
+
+            # Displacement (m)
+            if yr == self.base_year:
+                disp_str = "0.0 (Base)"
+            elif not has_data:
+                disp_str = "NaN"
+            else:
+                disp_str = f"{r['displacement_m']:.1f}"
+            item_disp = QTableWidgetItem(disp_str)
+            item_disp.setTextAlignment(Qt.AlignRight | Qt.AlignVCenter)
+
+            # Water Area (km²)
+            item_area = QTableWidgetItem(f"{r['water_area_km2']:.2f}" if has_data else "NaN")
+            item_area.setTextAlignment(Qt.AlignRight | Qt.AlignVCenter)
+
+            # Mouth Width (m)
+            w_raw = r.get("opening_width_m", 0.0)
+            item_w = QTableWidgetItem(f"{w_raw:.1f}" if (has_data and w_raw > 0) else "NaN")
+            item_w.setTextAlignment(Qt.AlignRight | Qt.AlignVCenter)
+
+            # East Shift (m) & North Shift (m)
+            e_raw = r.get("east_shift_m", 0.0)
+            n_raw = r.get("north_shift_m", 0.0)
+            item_e = QTableWidgetItem(f"{e_raw:+.1f}" if has_data else "NaN")
+            item_e.setTextAlignment(Qt.AlignRight | Qt.AlignVCenter)
+            item_n = QTableWidgetItem(f"{n_raw:+.1f}" if has_data else "NaN")
+            item_n.setTextAlignment(Qt.AlignRight | Qt.AlignVCenter)
+
+            # Data Status
+            if yr == self.base_year:
+                status_str = "Baseline Reference"
+            elif yr == self.target_year:
+                status_str = "Prediction Target" if yr >= 2025 else "Target Observation"
+            elif not has_data:
+                status_str = "Data Unavailable"
+            elif r.get("is_projection", False):
+                status_str = "AI Projection"
+            else:
+                status_str = "Ground Truth"
+            item_status = QTableWidgetItem(status_str)
+            item_status.setTextAlignment(Qt.AlignCenter)
+
+            all_items = [item_yr, item_coords, item_disp, item_area, item_w, item_e, item_n, item_status]
+
+            is_base = (yr == self.base_year)
+            is_target = (yr == self.target_year)
+
+            for col_idx, item in enumerate(all_items):
+                if not has_data or item.text() == "NaN":
+                    item.setForeground(QColor(AMBER))
+                elif is_base:
+                    item.setBackground(QColor(16, 59, 50, 180))
+                    item.setForeground(QColor(SOFT_LIME))
+                elif is_target:
+                    item.setBackground(QColor(0, 191, 165, 50))
+                    item.setForeground(QColor(MINT))
                 else:
-                    w_str = f"{float(w_raw):.2f}"
+                    item.setForeground(QColor(WARM_IVORY))
 
-                # Format Longitude & Latitude (8 decimals)
-                lon_raw = row["Longitude"]
-                lon_str = "NaN" if pd.isna(lon_raw) else f"{float(lon_raw):.8f}"
+                self.table.setItem(r_idx, col_idx, item)
 
-                lat_raw = row["Latitude"]
-                lat_str = "NaN" if pd.isna(lat_raw) else f"{float(lat_raw):.8f}"
-
-                # Format East Shift (m) & North Shift (m)
-                e_raw = row["East Shift (m)"]
-                if pd.isna(e_raw):
-                    e_str = "NaN"
-                elif float(e_raw) == int(float(e_raw)):
-                    e_str = f"{float(e_raw):.1f}"
-                else:
-                    e_str = f"{float(e_raw):.2f}"
-
-                n_raw = row["North Shift (m)"]
-                if pd.isna(n_raw):
-                    n_str = "NaN"
-                elif float(n_raw) == int(float(n_raw)):
-                    n_str = f"{float(n_raw):.1f}"
-                else:
-                    n_str = f"{float(n_raw):.2f}"
-
-                item_idx = QTableWidgetItem(str(idx_val))
-                item_idx.setTextAlignment(Qt.AlignCenter)
-
-                item_yr = QTableWidgetItem(str(yr_val))
-                item_yr.setTextAlignment(Qt.AlignCenter)
-
-                item_w = QTableWidgetItem(w_str)
-                item_w.setTextAlignment(Qt.AlignRight | Qt.AlignVCenter)
-
-                item_lon = QTableWidgetItem(lon_str)
-                item_lon.setTextAlignment(Qt.AlignRight | Qt.AlignVCenter)
-
-                item_lat = QTableWidgetItem(lat_str)
-                item_lat.setTextAlignment(Qt.AlignRight | Qt.AlignVCenter)
-
-                item_e = QTableWidgetItem(e_str)
-                item_e.setTextAlignment(Qt.AlignRight | Qt.AlignVCenter)
-
-                item_n = QTableWidgetItem(n_str)
-                item_n.setTextAlignment(Qt.AlignRight | Qt.AlignVCenter)
-
-                all_items = [item_idx, item_yr, item_w, item_lon, item_lat, item_e, item_n]
-
-                is_base = (yr_val == self.base_year)
-                is_target = (yr_val == self.target_year)
-
-                for col_idx, item in enumerate(all_items):
-                    if item.text() == "NaN":
-                        item.setForeground(QColor(AMBER))
-                    elif is_base:
-                        item.setBackground(QColor(16, 59, 50, 180))
-                        item.setForeground(QColor(SOFT_LIME))
-                    elif is_target:
-                        item.setBackground(QColor(0, 191, 165, 50))
-                        item.setForeground(QColor(MINT))
-                    else:
-                        item.setForeground(QColor(WARM_IVORY))
-
-                    self.table.setItem(r_idx, col_idx, item)
-
-            self.table_note.setText(f"1 to {len(df_table)} of {len(df_table)} entries")
-            if hasattr(self, 'filter_input') and self.filter_input.text():
-                self.on_filter_changed(self.filter_input.text())
+        self.table_note.setText(f"Showing {len(filtered_ts)} entries ({min_y}–{max_y})")
+        if hasattr(self, 'filter_input') and self.filter_input.text():
+            self.on_filter_changed(self.filter_input.text())
 
         # Update application status bar
         if self.main_window and hasattr(self.main_window, "update_status"):
@@ -1056,17 +1215,12 @@ class RiverMouthDeviationPage(QWidget):
         if query:
             self.table_note.setText(f"{visible} of {total} entries (filtered)")
         else:
-            self.table_note.setText(f"1 to {total} of {total} entries")
+            min_y = min(self.base_year, self.target_year)
+            max_y = max(self.base_year, self.target_year)
+            self.table_note.setText(f"Showing {total} entries ({min_y}–{max_y})")
 
     def on_table_cell_clicked(self, row, col):
-        yr_item = self.table.item(row, 1)
-        if yr_item:
-            try:
-                yr = int(yr_item.text().strip())
-                if yr != self.target_year and 1989 <= yr <= 2026:
-                    self.combo_target.setCurrentText(str(yr))
-            except Exception:
-                pass
+        pass
 
     # ========================================================================
     # Export Options Menu (CSV, GeoJSON, Report)
@@ -1095,6 +1249,7 @@ class RiverMouthDeviationPage(QWidget):
         act_csv = menu.addAction("Export Results Table as CSV (.csv)")
         act_geojson = menu.addAction("Export GIS Vector Geometry as GeoJSON (.geojson)")
         act_report = menu.addAction("Export Scientific Analysis Report (.txt)")
+        act_image = menu.addAction("Export Comparison Visual as PNG (.png)")
 
         action = menu.exec(self.btn_export.mapToGlobal(QPointF(0, self.btn_export.height()).toPoint()))
         if action == act_csv:
@@ -1103,6 +1258,20 @@ class RiverMouthDeviationPage(QWidget):
             self.export_geojson_dialog()
         elif action == act_report:
             self.export_report_dialog()
+        elif action == act_image:
+            self.export_image_dialog()
+
+    def export_image_dialog(self):
+        default_fn = f"Suvarna_Mouth_Comparison_{self.base_year}_{self.target_year}.png"
+        path, _ = QFileDialog.getSaveFileName(self, "Export Comparison Image as PNG", default_fn, "PNG Images (*.png)")
+        if not path:
+            return
+        try:
+            pix = self.comparison_card.grab()
+            pix.save(path, "PNG")
+            QMessageBox.information(self, "Export Successful", f"Saved comparison visual to:\n{path}")
+        except Exception as e:
+            QMessageBox.warning(self, "Export Failed", f"Could not export comparison image: {e}")
 
     def export_csv_dialog(self):
         default_fn = f"Suvarna_Mouth_Deviation_{self.base_year}_{self.target_year}.csv"

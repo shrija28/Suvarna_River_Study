@@ -164,6 +164,16 @@ class DatasetConfig:
         return ""
 
     @property
+    def lulc_dir(self) -> str:
+        d = os.path.join(self._root_dir, "LULC_images")
+        if os.path.isdir(d):
+            return d
+        d2 = os.path.join(self.river_mouth_dir, "LULC_images")
+        if os.path.isdir(d2):
+            return d2
+        return os.path.join(self._root_dir, "LULC_images")
+
+    @property
     def lulc_master_csv(self) -> str:
         p = os.path.join(self._root_dir, "LULC_Master_Counts.csv")
         if os.path.isfile(p):
