@@ -1,6 +1,2 @@
 Flask
-pandas
-numpy
-rasterio
-Pillow
 gunicorn
