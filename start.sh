@@ -26,14 +26,18 @@ x11vnc -display :99 -forever -nopw -shared -rfbport 5900 -quiet &
 sleep 1
 
 # 4. Start Websockify / noVNC web server on $PORT
-echo "Starting noVNC web interface on port $PORT..."
-websockify --web /usr/share/novnc $PORT localhost:5900 &
+echo "Starting noVNC web interface on 0.0.0.0:$PORT..."
+websockify --web /usr/share/novnc 0.0.0.0:$PORT localhost:5900 &
 sleep 1
 
 # 5. Launch the PySide6 Estuarine Mouth Dynamics Application
-echo "Starting PySide6 Application..."
 export DISPLAY=:99
 export QT_QPA_PLATFORM=xcb
 export QTWEBENGINE_CHROMIUM_FLAGS="--no-sandbox --disable-dev-shm-usage --disable-gpu"
 
-python main.py
+echo "Starting PySide6 Application..."
+while true; do
+    python main.py
+    echo "Application process ended. Restarting in 2 seconds..."
+    sleep 2
+done

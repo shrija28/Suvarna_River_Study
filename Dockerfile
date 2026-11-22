@@ -15,9 +15,20 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     openbox \
     novnc \
     websockify \
+    libatomic1 \
     libgl1-mesa-glx \
     libgl1-mesa-dri \
     libegl1 \
+    libglib2.0-0 \
+    libsm6 \
+    libice6 \
+    libxext6 \
+    libxrender1 \
+    libx11-xcb1 \
+    libdrm2 \
+    libgbm1 \
+    libxslt1.1 \
+    libpulse0 \
     libxkbcommon-x11-0 \
     libfontconfig1 \
     libdbus-1-3 \

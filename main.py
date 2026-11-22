@@ -1,9 +1,12 @@
 import os
 import sys
 
-# Ensure Chromium sandbox does not crash headless or embedded on Windows
-if "QTWEBENGINE_CHROMIUM_FLAGS" not in os.environ:
-    os.environ["QTWEBENGINE_CHROMIUM_FLAGS"] = "--no-sandbox"
+# Ensure Chromium sandbox does not crash headless, in Docker, or on Windows
+flags = os.environ.get("QTWEBENGINE_CHROMIUM_FLAGS", "")
+for f in ["--no-sandbox", "--disable-dev-shm-usage", "--disable-gpu"]:
+    if f not in flags:
+        flags = f"{flags} {f}".strip()
+os.environ["QTWEBENGINE_CHROMIUM_FLAGS"] = flags
 
 # Ensure GUI attaches to interactive user desktop on Windows
 if sys.platform == "win32":
