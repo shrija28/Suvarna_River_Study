@@ -1,0 +1,12 @@
+services:
+  - type: web
+    name: suvarna-river-study
+    env: docker
+    plan: starter
+    region: oregon
+    dockerfilePath: ./Dockerfile
+    envVars:
+      - key: PORT
+        value: 10000
+      - key: RESOLUTION
+        value: 1600x950x24
