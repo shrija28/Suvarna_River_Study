@@ -57,10 +57,12 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 # Set working directory
 WORKDIR /app
 
-# Configure noVNC to auto-connect and open full-screen directly at root URL
+# Configure noVNC to auto-connect, force interactive mode (view_only: false), and scale
 RUN ln -sf /usr/share/novnc/vnc.html /usr/share/novnc/index.html && \
     sed -i "s/UI.initSetting('autoconnect', false);/UI.initSetting('autoconnect', true);/" /usr/share/novnc/app/ui.js && \
-    sed -i "s/UI.initSetting('resize', 'off');/UI.initSetting('resize', 'scale');/" /usr/share/novnc/app/ui.js
+    sed -i "s/UI.initSetting('view_only', false);/UI.initSetting('view_only', false);/" /usr/share/novnc/app/ui.js && \
+    sed -i "s/UI.initSetting('resize', 'off');/UI.initSetting('resize', 'scale');/" /usr/share/novnc/app/ui.js && \
+    sed -i "s|<head>|<head><script>try{localStorage.setItem('view_only','false');localStorage.setItem('autoconnect','true');localStorage.setItem('resize','scale');}catch(e){}</script>|i" /usr/share/novnc/vnc.html
 
 # Install Python dependencies
 COPY requirements.txt .
