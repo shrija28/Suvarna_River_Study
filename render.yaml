@@ -1,5 +1,6 @@
 services:
   - type: web
+<<<<<<< HEAD
     name: suvarna-nadi-prediction
     env: python
     region: oregon
@@ -9,3 +10,15 @@ services:
     envVars:
       - key: PYTHON_VERSION
         value: 3.11.9
+=======
+    name: suvarna-river-study
+    env: docker
+    plan: starter
+    region: oregon
+    dockerfilePath: ./Dockerfile
+    envVars:
+      - key: PORT
+        value: 10000
+      - key: RESOLUTION
+        value: 1600x950x24
+>>>>>>> 2877380ac9702040172a64aa6fc441571a4ff640

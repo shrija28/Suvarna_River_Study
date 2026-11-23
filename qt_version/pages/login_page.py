@@ -329,6 +329,28 @@ class LoginPage(QWidget):
         self.btn_login.clicked.connect(self.handle_login)
         layout.addWidget(self.btn_login)
 
+        # Quick Demo Access Button
+        self.btn_guest = QPushButton("⚡ Quick Demo Access (Instant Entry)")
+        self.btn_guest.setFixedHeight(38)
+        self.btn_guest.setCursor(Qt.PointingHandCursor)
+        self.btn_guest.setStyleSheet(f"""
+            QPushButton {{
+                background-color: {PANEL_SURFACE};
+                color: {MINT};
+                font-weight: 700;
+                font-size: 12px;
+                border: 1px dashed {BORDER_COLOR};
+                border-radius: 8px;
+            }}
+            QPushButton:hover {{
+                background-color: {PANEL_GREEN};
+                color: {WARM_IVORY};
+                border-color: {MINT};
+            }}
+        """)
+        self.btn_guest.clicked.connect(self.handle_guest_login)
+        layout.addWidget(self.btn_guest)
+
         return w
 
     # ========================================================================
@@ -385,6 +407,28 @@ class LoginPage(QWidget):
         self.btn_submit_reg.setStyleSheet(self._primary_button_style())
         self.btn_submit_reg.clicked.connect(self.handle_register)
         layout.addWidget(self.btn_submit_reg)
+
+        # Quick Demo Access Button on Register View
+        self.btn_reg_guest = QPushButton("⚡ Quick Demo Access (Skip Registration)")
+        self.btn_reg_guest.setFixedHeight(38)
+        self.btn_reg_guest.setCursor(Qt.PointingHandCursor)
+        self.btn_reg_guest.setStyleSheet(f"""
+            QPushButton {{
+                background-color: {PANEL_SURFACE};
+                color: {MINT};
+                font-weight: 700;
+                font-size: 12px;
+                border: 1px dashed {BORDER_COLOR};
+                border-radius: 8px;
+            }}
+            QPushButton:hover {{
+                background-color: {PANEL_GREEN};
+                color: {WARM_IVORY};
+                border-color: {MINT};
+            }}
+        """)
+        self.btn_reg_guest.clicked.connect(self.handle_guest_login)
+        layout.addWidget(self.btn_reg_guest)
 
         return w
 
@@ -530,6 +574,16 @@ class LoginPage(QWidget):
         self.show_success(f"Welcome, {user.get('full_name') or user['username']}! Opening dashboard...")
         self.input_password.clear()
         self.login_success.emit(user)
+
+    def handle_guest_login(self):
+        """Allows one-click guest access for researchers evaluating the demo."""
+        guest_user = {
+            "username": "GuestResearcher",
+            "email": "researcher@suvarnariver.org",
+            "full_name": "Dr. Visiting Researcher",
+            "role": "Researcher",
+        }
+        self.login_success.emit(guest_user)
 
     def handle_register(self):
         """Processes user account creation."""

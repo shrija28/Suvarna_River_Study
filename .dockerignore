@@ -4,7 +4,8 @@ __pycache__
 *.pyc
 *.pyo
 *.pyd
+run.log
+scratch
 .pytest_cache
 .vscode
 .idea
-qt_version/
