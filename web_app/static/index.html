@@ -1,0 +1,1019 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Estuarine Mouth Dynamics - Path Deviation Prediction System</title>
+    <link rel="icon" type="image/png" href="/assets/logo.png">
+
+    <!-- Local Leaflet & Leaflet Draw CSS with CDN fallback -->
+    <link rel="stylesheet" href="/static/vendor/leaflet/leaflet.css" onerror="this.onerror=null;this.href='https://unpkg.com/leaflet@1.9.4/dist/leaflet.css';" />
+    <link rel="stylesheet" href="/static/vendor/leaflet-draw/leaflet.draw.css" onerror="this.onerror=null;this.href='https://cdnjs.cloudflare.com/ajax/libs/leaflet.draw/1.0.4/leaflet.draw.css';" />
+
+    <!-- Application Dark Emerald GIS Theme (Exact match to Qt Desktop Theme) -->
+    <link rel="stylesheet" href="/static/css/style.css">
+</head>
+
+<body>
+
+    <!-- Offline Notification Banner -->
+    <div id="offline-banner" style="display: none; background: #B71C1C; color: #FFF; padding: 6px 16px; font-size: 12px; font-weight: 600; text-align: center; position: absolute; top: 0; left: 0; width: 100%; z-index: 9999;">
+        <span>Notice: Map tiles could not be downloaded. Please verify your internet connection.</span>
+        <button onclick="window.location.reload()" style="background:#FFF; color:#B71C1C; border:none; border-radius:3px; padding:2px 8px; margin-left:10px; cursor:pointer;">Retry</button>
+        <button onclick="document.getElementById('offline-banner').style.display='none'" style="background:transparent; color:#FFF; border:1px solid #FFF; border-radius:3px; padding:2px 8px; margin-left:6px; cursor:pointer;">Dismiss</button>
+    </div>
+
+    <!-- ====================================================================
+         Root Stack (Matches QMainWindow + QStackedWidget in app.py)
+         ==================================================================== -->
+    <div id="root-stack">
+
+        <!-- ================================================================
+             Screen 0: Modern Login & Authentication Page (LoginPage)
+             ================================================================ -->
+        <div id="login-overlay">
+            <div class="login-card-container">
+                <div class="login-header-box">
+                    <img src="/assets/logo.png" alt="Suvarna Nadi Logo" class="login-logo" onerror="this.style.display='none'" />
+                    <h2 class="login-title">Estuarine Mouth Dynamics</h2>
+                    <h3 class="login-sub">Path Deviation Prediction System</h3>
+                    <p class="login-tagline">Geospatial Analysis &bull; Remote Sensing &bull; Machine Learning</p>
+                </div>
+
+                <!-- Tabs: Sign In / Create Account -->
+                <div class="login-tab-row">
+                    <button type="button" id="tab-signin-btn" class="login-tab-btn active">Sign In</button>
+                    <button type="button" id="tab-register-btn" class="login-tab-btn">Create Account</button>
+                </div>
+
+                <!-- Feedback Banner -->
+                <div id="login-feedback" class="login-feedback-box"></div>
+
+                <!-- Form 1: Sign In -->
+                <form id="form-signin" class="login-form" style="display: flex; flex-direction: column; gap: 10px;">
+                    <div>
+                        <div class="form-field-label">Username or Email Address</div>
+                        <input type="text" id="signin-username" placeholder="e.g. admin or scientist" required autocomplete="username" />
+                    </div>
+                    <div>
+                        <div class="form-field-label">Password</div>
+                        <div style="display: flex; gap: 6px;">
+                            <input type="password" id="signin-password" placeholder="••••••••" style="flex: 1;" required autocomplete="current-password" />
+                            <button type="button" id="toggle-signin-pwd" class="btn-panel-action muted" style="width: 38px; padding: 0;" title="Toggle Password">👁</button>
+                        </div>
+                    </div>
+                    <div style="display: flex; align-items: center; justify-content: space-between; font-size: 11px; margin-top: 2px;">
+                        <label style="display: flex; align-items: center; gap: 6px; cursor: pointer; color: var(--muted-sage);">
+                            <input type="checkbox" id="signin-remember" checked />
+                            Remember Credentials
+                        </label>
+                        <a href="#" id="link-forgot-pwd" style="color: var(--mint); text-decoration: none;">Forgot Password?</a>
+                    </div>
+                    <button type="submit" class="btn-next-step" style="margin-top: 6px; height: 38px;">Authenticate &amp; Enter Dashboard &rarr;</button>
+                </form>
+
+                <!-- Form 2: Register -->
+                <form id="form-register" class="login-form" style="display: none; flex-direction: column; gap: 10px;">
+                    <div>
+                        <div class="form-field-label">Username</div>
+                        <input type="text" id="reg-username" placeholder="Choose a username" required />
+                    </div>
+                    <div>
+                        <div class="form-field-label">Email Address</div>
+                        <input type="email" id="reg-email" placeholder="researcher@suvarnariver.org" required />
+                    </div>
+                    <div>
+                        <div class="form-field-label">Full Name</div>
+                        <input type="text" id="reg-fullname" placeholder="e.g. Dr. A. Sharma" required />
+                    </div>
+                    <div>
+                        <div class="form-field-label">Research Role</div>
+                        <select id="reg-role">
+                            <option value="Researcher" selected>Estuarine Researcher</option>
+                            <option value="Lead Scientist">Lead Geomorphologist</option>
+                            <option value="Administrator">System Administrator</option>
+                        </select>
+                    </div>
+                    <div>
+                        <div class="form-field-label">Password (min. 6 characters)</div>
+                        <input type="password" id="reg-password" placeholder="••••••••" required />
+                    </div>
+                    <div>
+                        <div class="form-field-label">Confirm Password</div>
+                        <input type="password" id="reg-confirm-password" placeholder="••••••••" required />
+                    </div>
+                    <button type="submit" class="btn-next-step" style="margin-top: 6px; height: 38px;">Create Researcher Account</button>
+                    <div style="text-align: center; font-size: 11px; margin-top: 2px;">
+                        <a href="#" id="link-back-signin-1" style="color: var(--mint); text-decoration: none;">&larr; Back to Sign In</a>
+                    </div>
+                </form>
+
+                <!-- Form 3: Forgot Password -->
+                <form id="form-forgot" class="login-form" style="display: none; flex-direction: column; gap: 10px;">
+                    <div>
+                        <div class="form-field-label">Username or Email Address</div>
+                        <input type="text" id="forgot-username" placeholder="Enter your registered account" required />
+                    </div>
+                    <div>
+                        <div class="form-field-label">New Password</div>
+                        <input type="password" id="forgot-password" placeholder="New password" required />
+                    </div>
+                    <div>
+                        <div class="form-field-label">Confirm New Password</div>
+                        <input type="password" id="forgot-confirm-password" placeholder="Re-enter new password" required />
+                    </div>
+                    <button type="submit" class="btn-next-step" style="margin-top: 6px; height: 38px;">Reset Password</button>
+                    <div style="text-align: center; font-size: 11px; margin-top: 2px;">
+                        <a href="#" id="link-back-signin-2" style="color: var(--mint); text-decoration: none;">&larr; Back to Sign In</a>
+                    </div>
+                </form>
+
+                <div style="text-align: center; font-size: 10px; color: var(--muted-sage); border-top: 1px solid var(--border-subtle); padding-top: 8px;">
+                    Protected Scientific Research Environment &bull; Kodi Bengre, Udupi
+                </div>
+            </div>
+        </div>
+
+        <!-- ================================================================
+             Screen 1: Protected Main Application Dashboard (main_app_widget)
+             ================================================================ -->
+        <div id="screen-dashboard" style="display: flex;">
+
+            <!-- ------------------------------------------------------------
+                 Top Branding Banner (build_top_banner, height: 94px)
+                 ------------------------------------------------------------ -->
+            <header id="top-banner">
+                <!-- 1. Emblem / Logo -->
+                <div class="banner-logo-box">
+                    <img src="/assets/logo.png" alt="Logo" onerror="this.style.display='none'" />
+                </div>
+
+                <!-- 2. Title & Subtitle Branding -->
+                <div class="banner-titles">
+                    <div class="brand-title">Estuarine Mouth Dynamics</div>
+                    <div class="brand-sub">Path Deviation Prediction System</div>
+                    <div class="brand-labels">Geospatial Analysis &nbsp;|&nbsp; Machine Learning &nbsp;|&nbsp; Sustainable Coastlines</div>
+                </div>
+
+                <div class="banner-spacer"></div>
+
+                <!-- 3. Location Badge -->
+                <div class="loc-badge">
+                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="var(--teal)" stroke-width="2.5">
+                        <path d="M21 10c0 7-9 13-9 13s-9-6-9-13a9 9 0 0 1 18 0z"></path>
+                        <circle cx="12" cy="10" r="3"></circle>
+                    </svg>
+                    <span id="loc-badge-text">Kodi Bengre, Udupi, Karnataka, India</span>
+                </div>
+
+                <!-- 4. User Profile Badge -->
+                <div class="user-badge">
+                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="var(--mint)" stroke-width="2.5">
+                        <path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"></path>
+                        <circle cx="12" cy="7" r="4"></circle>
+                    </svg>
+                    <span id="user-badge-text">Researcher</span>
+                </div>
+
+                <!-- 5. Logout Button -->
+                <button type="button" id="btn-logout" class="btn-logout" title="Sign out of current research session">
+                    <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5">
+                        <path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"></path>
+                        <polyline points="16 17 21 12 16 7"></polyline>
+                        <line x1="21" y1="12" x2="9" y2="12"></line>
+                    </svg>
+                    Logout
+                </button>
+
+                <!-- 6. Scenic River Estuary Panoramic Graphic -->
+                <img src="/assets/suvarna_banner.png" alt="Suvarna River" class="banner-graphic" onerror="this.style.display='none'" />
+            </header>
+
+            <!-- ------------------------------------------------------------
+                 Center Body (Matches self.stack in app.py)
+                 ------------------------------------------------------------ -->
+            <main id="center-body">
+
+                <!-- ========================================================
+                     Page 0: HomePage (view-home)
+                     Full-width map on left (70%), 340px parameters on right
+                     NO PERSISTENT SIDEBAR - Exactly matches home.py!
+                     ======================================================== -->
+                <section id="view-home" class="app-view stack-page active">
+                    <!-- Left: Interactive Map Panel -->
+                    <div class="home-left-container">
+                        <!-- Map Panel Header -->
+                        <div class="home-map-header">
+                            <div>
+                                <h3>Interactive Estuarine Mouth Dynamics Map</h3>
+                                <p>Explore the study area, select region of interest, and analyze dynamic river mouth characteristics</p>
+                            </div>
+                            <div class="mode-btn-box">
+                                <button type="button" class="mode-btn active" data-mode="map">Map</button>
+                                <button type="button" class="mode-btn" data-mode="satellite">Satellite</button>
+                                <button type="button" class="mode-btn" data-mode="hybrid">Hybrid</button>
+                                <button type="button" class="mode-btn" data-mode="terrain">Terrain</button>
+                            </div>
+                        </div>
+
+                        <!-- Embedded Web Map View -->
+                        <div class="home-map-frame">
+                            <div id="map"></div>
+                        </div>
+                    </div>
+
+                    <!-- Right Panel: Analysis Parameters (Width 340px) -->
+                    <div class="home-right-panel">
+                        <!-- Panel Header -->
+                        <div class="panel-header-row">
+                            <div>
+                                <div class="panel-title">Analysis Parameters</div>
+                                <div class="panel-sub">Model configuration &amp; spatial extent</div>
+                            </div>
+                            <span class="badge-spatial-ml">SPATIAL ML</span>
+                        </div>
+
+                        <hr class="panel-divider" />
+
+                        <!-- Temporal Configuration -->
+                        <div class="section-label-temporal">TEMPORAL CONFIGURATION</div>
+
+                        <div>
+                            <div class="form-field-label">Base Year (Historical Reference)</div>
+                            <select id="base-year-select"></select>
+                        </div>
+
+                        <div>
+                            <div class="form-field-label">Prediction Target Year</div>
+                            <select id="prediction-year-select"></select>
+                        </div>
+
+                        <div style="height: 4px;"></div>
+
+                        <!-- Study Area Coordinates (AOI) -->
+                        <div style="display: flex; align-items: center; justify-content: space-between;">
+                            <span class="section-label-aoi">STUDY AREA COORDINATES (AOI)</span>
+                            <span style="font-size: 10px; color: var(--muted-sage); font-style: italic;">Draw Rectangle</span>
+                        </div>
+
+                        <div class="aoi-coord-grid">
+                            <div>
+                                <div class="form-field-label">North Lat (&deg;N)</div>
+                                <input type="text" id="north-lat" placeholder="13.480000" readonly />
+                            </div>
+                            <div>
+                                <div class="form-field-label">East Lon (&deg;E)</div>
+                                <input type="text" id="east-lon" placeholder="74.740000" readonly />
+                            </div>
+                            <div>
+                                <div class="form-field-label">South Lat (&deg;N)</div>
+                                <input type="text" id="south-lat" placeholder="13.400000" readonly />
+                            </div>
+                            <div>
+                                <div class="form-field-label">West Lon (&deg;E)</div>
+                                <input type="text" id="west-lon" placeholder="74.660000" readonly />
+                            </div>
+                        </div>
+
+                        <!-- AOI Action Buttons -->
+                        <div class="aoi-btn-row">
+                            <button type="button" id="btn-focus-study" class="btn-panel-action">Focus Location</button>
+                            <button type="button" id="btn-clear-aoi" class="btn-panel-action muted">Clear AOI</button>
+                        </div>
+
+                        <div style="flex: 1;"></div>
+
+                        <!-- Status note above button -->
+                        <div id="aoi-status-note" class="aoi-status-note">Use top-left map toolbar to draw rectangle AOI</div>
+
+                        <!-- Next Button (Prominent Mint/Teal Button with Arrow) -->
+                        <button type="button" id="btn-next-step" class="btn-next-step">Next Step: Analysis  &rarr;</button>
+
+                        <!-- Quick Direct Access Buttons -->
+                        <div class="quick-nav-row">
+                            <button type="button" id="btn-quick-lulc" class="btn-quick-nav">LULC Analysis</button>
+                            <button type="button" id="btn-quick-dev" class="btn-quick-nav">Deviation Report</button>
+                        </div>
+                    </div>
+                </section>
+
+                <!-- ========================================================
+                     Page 4: River Mouth Imagery Gallery (view-river-mouth)
+                     Matches river_mouth_page.py with internal sidebar
+                     ======================================================== -->
+                <section id="view-river-mouth" class="app-view stack-page">
+                    <div class="subpage-container">
+                        <!-- Left Vertical Navigation Sidebar -->
+                        <nav class="subpage-sidebar">
+                            <div style="font-size: 11px; font-weight: 800; color: var(--muted-sage); letter-spacing: 1.5px; padding: 4px 6px;">NAVIGATION</div>
+
+                            <button type="button" class="nav-sidebar-btn" onclick="navigateTo('home')">
+                                <div class="btn-icon">🏠</div>
+                                <div>
+                                    <div class="btn-title">Home</div>
+                                    <div class="btn-desc">Interactive Map</div>
+                                </div>
+                            </button>
+
+                            <button type="button" class="nav-sidebar-btn active" onclick="navigateTo('river-mouth')">
+                                <div class="btn-icon">📷</div>
+                                <div>
+                                    <div class="btn-title">River Mouth</div>
+                                    <div class="btn-desc">Satellite Gallery</div>
+                                </div>
+                            </button>
+
+                            <button type="button" class="nav-sidebar-btn" onclick="navigateTo('lulc')">
+                                <div class="btn-icon">📊</div>
+                                <div>
+                                    <div class="btn-title">LULC Analysis</div>
+                                    <div class="btn-desc">4-Class Satellite</div>
+                                </div>
+                            </button>
+
+                            <button type="button" class="nav-sidebar-btn" onclick="navigateTo('weather')">
+                                <div class="btn-icon">🌦</div>
+                                <div>
+                                    <div class="btn-title">Weather Data</div>
+                                    <div class="btn-desc">1989-2026 Climate</div>
+                                </div>
+                            </button>
+
+                            <button type="button" class="nav-sidebar-btn" onclick="navigateTo('deviation')">
+                                <div class="btn-icon">📈</div>
+                                <div>
+                                    <div class="btn-title">Deviation Report</div>
+                                    <div class="btn-desc">Morphodynamic Shift</div>
+                                </div>
+                            </button>
+
+                            <div style="flex: 1;"></div>
+
+                            <!-- Context Card -->
+                            <div style="background-color: var(--panel-surface); border: 1px solid var(--border-subtle); border-radius: 8px; padding: 8px;">
+                                <div style="font-size: 9px; font-weight: 800; color: var(--mint); letter-spacing: 0.5px;">ESTUARY IMAGERY</div>
+                                <div style="font-size: 10px; color: var(--muted-sage); margin-top: 3px; line-height: 1.3;">
+                                    Multi-decadal multi-spectral rasters tracking spit morphology &amp; tidal inlet migration.
+                                </div>
+                            </div>
+                        </nav>
+
+                        <!-- Main Content Area -->
+                        <div class="subpage-content">
+                            <!-- Top Toolbar -->
+                            <div class="subpage-toolbar">
+                                <div>
+                                    <h2>River Mouth Satellite Imagery Gallery</h2>
+                                    <p>Historical optical satellite imagery of the Suvarna estuary mouth (1989-2026)</p>
+                                </div>
+                                <div class="toolbar-controls">
+                                    <div style="display: flex; background: var(--panel-surface); border: 1px solid var(--border-color); border-radius: 6px; padding: 2px;">
+                                        <button type="button" class="mode-btn active" style="border:none; height:28px;">🌊 Estuarine Water Masks</button>
+                                        <button type="button" class="mode-btn" style="border:none; height:28px;">📍 First-Opening Detection</button>
+                                    </div>
+                                    <button type="button" class="btn-panel-action" onclick="alert('Downloading all selected year satellite images...')" style="height:32px; padding: 0 14px; background:var(--mint); color:var(--dark-emerald); font-weight:700;">
+                                        Download Images
+                                    </button>
+                                    <button type="button" class="btn-next-step" onclick="navigateTo('deviation')" style="height:32px; padding: 0 16px; font-size:12px;">
+                                        Analyze Deviation &rarr;
+                                    </button>
+                                </div>
+                            </div>
+
+                            <!-- Satellite Gallery Grid -->
+                            <div id="gallery-grid-container" class="gallery-cards-grid"></div>
+                        </div>
+                    </div>
+                </section>
+
+                <!-- ========================================================
+                     Page 5: River-Mouth Deviation Analysis (view-deviation)
+                     Matches deviation_page.py with internal sidebar
+                     ======================================================== -->
+                <section id="view-deviation" class="app-view stack-page">
+                    <div class="subpage-container">
+                        <!-- Left Navigation Sidebar -->
+                        <nav class="subpage-sidebar">
+                            <div style="font-size: 11px; font-weight: 800; color: var(--muted-sage); letter-spacing: 1.5px; padding: 4px 6px;">NAVIGATION</div>
+
+                            <button type="button" class="nav-sidebar-btn" onclick="navigateTo('home')">
+                                <div class="btn-icon">🏠</div>
+                                <div>
+                                    <div class="btn-title">Home</div>
+                                    <div class="btn-desc">Interactive Map</div>
+                                </div>
+                            </button>
+
+                            <button type="button" class="nav-sidebar-btn" onclick="navigateTo('river-mouth')">
+                                <div class="btn-icon">📷</div>
+                                <div>
+                                    <div class="btn-title">River Mouth</div>
+                                    <div class="btn-desc">Satellite Gallery</div>
+                                </div>
+                            </button>
+
+                            <button type="button" class="nav-sidebar-btn" onclick="navigateTo('lulc')">
+                                <div class="btn-icon">📊</div>
+                                <div>
+                                    <div class="btn-title">LULC Analysis</div>
+                                    <div class="btn-desc">4-Class Satellite</div>
+                                </div>
+                            </button>
+
+                            <button type="button" class="nav-sidebar-btn" onclick="navigateTo('weather')">
+                                <div class="btn-icon">🌦</div>
+                                <div>
+                                    <div class="btn-title">Weather Data</div>
+                                    <div class="btn-desc">1989-2026 Climate</div>
+                                </div>
+                            </button>
+
+                            <button type="button" class="nav-sidebar-btn active" onclick="navigateTo('deviation')">
+                                <div class="btn-icon">📈</div>
+                                <div>
+                                    <div class="btn-title">Deviation Report</div>
+                                    <div class="btn-desc">Morphodynamic Shift</div>
+                                </div>
+                            </button>
+
+                            <div style="flex: 1;"></div>
+
+                            <!-- Context Card -->
+                            <div style="background-color: var(--panel-surface); border: 1px solid var(--border-subtle); border-radius: 8px; padding: 8px;">
+                                <div style="font-size: 9px; font-weight: 800; color: var(--soft-lime); letter-spacing: 0.5px;">ESTUARINE DYNAMICS</div>
+                                <div style="font-size: 10px; color: var(--muted-sage); margin-top: 3px; line-height: 1.3;">
+                                    Spatio-temporal mouth displacement tracking via georeferenced satellite throat centroids (EPSG:32643).
+                                </div>
+                            </div>
+                        </nav>
+
+                        <!-- Main Content Area -->
+                        <div class="subpage-content">
+                            <!-- Top Toolbar -->
+                            <div class="subpage-toolbar">
+                                <div>
+                                    <h2>River-Mouth Deviation &amp; Morphodynamic Analysis</h2>
+                                    <p>Automated quantification of river mouth migration, displacement vector, and shoreline drift</p>
+                                </div>
+                                <div class="toolbar-controls">
+                                    <div style="display: flex; align-items: center; gap: 6px; background: var(--dark-emerald); border: 1px solid var(--border-color); border-radius: 6px; padding: 4px 10px;">
+                                        <span style="font-size: 11px; color: var(--muted-sage); font-weight: 600;">Base:</span>
+                                        <select id="dev-base-year" style="width: 70px; padding: 2px 4px; font-size: 11px; height: 26px;"></select>
+                                        <span style="color: var(--mint); font-weight: 700;">&rarr;</span>
+                                        <span style="font-size: 11px; color: var(--muted-sage); font-weight: 600;">Target:</span>
+                                        <select id="dev-target-year" style="width: 70px; padding: 2px 4px; font-size: 11px; height: 26px;"></select>
+                                    </div>
+                                    <a id="btn-export-dev-csv" href="/api/deviation/export/csv" download="Suvarna_Deviation_Timeseries.csv" class="btn-panel-action" style="text-decoration:none; height:32px; padding: 0 14px;">
+                                        Export CSV &darr;
+                                    </a>
+                                </div>
+                            </div>
+
+                            <!-- Key Metric Cards (4 Cards) -->
+                            <div class="metric-cards-row">
+                                <div class="dev-metric-card">
+                                    <div class="dev-metric-header">
+                                        <span class="dev-metric-title">Net Displacement</span>
+                                        <span id="dev-badge-displacement" class="dev-metric-badge">--</span>
+                                    </div>
+                                    <div id="dev-val-displacement" class="dev-metric-val">-- m</div>
+                                    <div id="dev-sub-displacement" class="dev-metric-sub">Total Euclidean displacement</div>
+                                </div>
+
+                                <div class="dev-metric-card">
+                                    <div class="dev-metric-header">
+                                        <span class="dev-metric-title">Drift Direction</span>
+                                        <span id="dev-badge-direction" class="dev-metric-badge">--</span>
+                                    </div>
+                                    <div id="dev-val-direction" class="dev-metric-val" style="color: var(--mint);">--</div>
+                                    <div id="dev-sub-direction" class="dev-metric-sub">Net migration direction</div>
+                                </div>
+
+                                <div class="dev-metric-card">
+                                    <div class="dev-metric-header">
+                                        <span class="dev-metric-title">Estuary Water Extent</span>
+                                        <span id="dev-badge-water" class="dev-metric-badge">--</span>
+                                    </div>
+                                    <div id="dev-val-water" class="dev-metric-val">-- km²</div>
+                                    <div id="dev-sub-water" class="dev-metric-sub">Net water area change</div>
+                                </div>
+
+                                <div class="dev-metric-card">
+                                    <div class="dev-metric-header">
+                                        <span class="dev-metric-title">Migration Velocity</span>
+                                        <span id="dev-badge-rate" class="dev-metric-badge">Historical</span>
+                                    </div>
+                                    <div id="dev-val-rate" class="dev-metric-val">-- m/yr</div>
+                                    <div id="dev-sub-rate" class="dev-metric-sub">Mean annual shoreline drift</div>
+                                </div>
+                            </div>
+
+                            <!-- Deviation Canvas Chart -->
+                            <div class="chart-box">
+                                <div class="chart-box-header">
+                                    <h4>River-Mouth Displacement Trajectory &amp; Multi-Decadal Shift (1989-2026)</h4>
+                                </div>
+                                <canvas id="deviation-chart-canvas" class="interactive-canvas"></canvas>
+                            </div>
+
+                            <!-- Deviation Timeseries Table -->
+                            <div class="table-box">
+                                <div class="table-box-header">
+                                    <h4>Historical Geodetic Coordinates &amp; Throat Displacement Timeseries Table</h4>
+                                </div>
+                                <div class="table-scroll-wrap">
+                                    <table id="deviation-data-table" class="suvarna-table">
+                                        <thead>
+                                            <tr>
+                                                <th>Year</th>
+                                                <th>Record Type</th>
+                                                <th>Mouth Lat (°N)</th>
+                                                <th>Mouth Lon (°E)</th>
+                                                <th>Net Displacement (m)</th>
+                                                <th>Direction</th>
+                                                <th>Water Area (km²)</th>
+                                                <th>Throat Width</th>
+                                                <th>Migration Rate</th>
+                                            </tr>
+                                        </thead>
+                                        <tbody></tbody>
+                                    </table>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </section>
+
+                <!-- ========================================================
+                     Page 1: Land Use / Land Cover Analysis (view-lulc)
+                     Matches result.py with internal sidebar
+                     ======================================================== -->
+                <section id="view-lulc" class="app-view stack-page">
+                    <div class="subpage-container">
+                        <!-- Navigation Sidebar -->
+                        <nav class="subpage-sidebar">
+                            <div style="font-size: 11px; font-weight: 800; color: var(--muted-sage); letter-spacing: 1.5px; padding: 4px 6px;">NAVIGATION</div>
+
+                            <button type="button" class="nav-sidebar-btn" onclick="navigateTo('home')">
+                                <div class="btn-icon">🏠</div>
+                                <div>
+                                    <div class="btn-title">Home</div>
+                                    <div class="btn-desc">Interactive Map</div>
+                                </div>
+                            </button>
+
+                            <button type="button" class="nav-sidebar-btn" onclick="navigateTo('river-mouth')">
+                                <div class="btn-icon">📷</div>
+                                <div>
+                                    <div class="btn-title">River Mouth</div>
+                                    <div class="btn-desc">Satellite Gallery</div>
+                                </div>
+                            </button>
+
+                            <button type="button" class="nav-sidebar-btn active" onclick="navigateTo('lulc')">
+                                <div class="btn-icon">📊</div>
+                                <div>
+                                    <div class="btn-title">LULC Analysis</div>
+                                    <div class="btn-desc">4-Class Satellite</div>
+                                </div>
+                            </button>
+
+                            <button type="button" class="nav-sidebar-btn" onclick="navigateTo('weather')">
+                                <div class="btn-icon">🌦</div>
+                                <div>
+                                    <div class="btn-title">Weather Data</div>
+                                    <div class="btn-desc">1989-2026 Climate</div>
+                                </div>
+                            </button>
+
+                            <button type="button" class="nav-sidebar-btn" onclick="navigateTo('deviation')">
+                                <div class="btn-icon">📈</div>
+                                <div>
+                                    <div class="btn-title">Deviation Report</div>
+                                    <div class="btn-desc">Morphodynamic Shift</div>
+                                </div>
+                            </button>
+
+                            <div style="flex: 1;"></div>
+
+                            <!-- Context Card -->
+                            <div style="background-color: var(--panel-surface); border: 1px solid var(--border-subtle); border-radius: 8px; padding: 8px;">
+                                <div style="font-size: 9px; font-weight: 800; color: var(--mint); letter-spacing: 0.5px;">LULC DYNAMICS</div>
+                                <div style="font-size: 10px; color: var(--muted-sage); margin-top: 3px; line-height: 1.3;">
+                                    Multi-temporal classification tracking 4 ecological cover types (Water, Built-up, Vegetation, Sand Spit).
+                                </div>
+                            </div>
+                        </nav>
+
+                        <!-- Content Area -->
+                        <div class="subpage-content">
+                            <!-- Toolbar -->
+                            <div class="subpage-toolbar">
+                                <div>
+                                    <h2>Land Use / Land Cover (LULC) Classification Dynamics</h2>
+                                    <p>4-Class Satellite Surface Dynamics for Kodi Bengre Estuarine Basin (1989-2026)</p>
+                                </div>
+                                <div class="toolbar-controls">
+                                    <div style="display: flex; align-items: center; gap: 6px;">
+                                        <span style="font-size: 11px; color: var(--muted-sage); font-weight: 600;">Year:</span>
+                                        <select id="lulc-year-select" style="width: 80px; padding: 2px 4px; font-size: 11px; height: 26px;"></select>
+                                    </div>
+                                    <div style="display: flex; gap: 4px; background: var(--dark-emerald); padding: 2px; border-radius: 6px; border: 1px solid var(--border-color);">
+                                        <button type="button" class="mode-btn lulc-filter-btn active" data-filter="water_body" style="height:26px; font-size:10px;">Water</button>
+                                        <button type="button" class="mode-btn lulc-filter-btn" data-filter="vegetation" style="height:26px; font-size:10px;">Vegetation</button>
+                                        <button type="button" class="mode-btn lulc-filter-btn" data-filter="barren_land" style="height:26px; font-size:10px;">Barren Spit</button>
+                                        <button type="button" class="mode-btn lulc-filter-btn" data-filter="built_up" style="height:26px; font-size:10px;">Built-up</button>
+                                        <button type="button" class="mode-btn lulc-filter-btn" data-filter="stacked" style="height:26px; font-size:10px;">Stacked</button>
+                                    </div>
+                                </div>
+                            </div>
+
+                            <!-- 4 Metric Cards -->
+                            <div class="metric-cards-row">
+                                <div class="dev-metric-card">
+                                    <div class="dev-metric-header">
+                                        <span class="dev-metric-title">Vegetation Cover</span>
+                                        <span id="lulc-veg-badge" class="dev-metric-badge" style="color:#74E6B0;">--</span>
+                                    </div>
+                                    <div id="lulc-veg-val" class="dev-metric-val" style="color:#74E6B0;">-- km²</div>
+                                    <div class="dev-metric-sub">Mangroves &amp; Coastal Flora</div>
+                                </div>
+
+                                <div class="dev-metric-card">
+                                    <div class="dev-metric-header">
+                                        <span class="dev-metric-title">Water Body Surface</span>
+                                        <span id="lulc-water-badge" class="dev-metric-badge" style="color:#42A5F5;">--</span>
+                                    </div>
+                                    <div id="lulc-water-val" class="dev-metric-val" style="color:#42A5F5;">-- km²</div>
+                                    <div class="dev-metric-sub">Estuary Channel &amp; Inlet</div>
+                                </div>
+
+                                <div class="dev-metric-card">
+                                    <div class="dev-metric-header">
+                                        <span class="dev-metric-title">Barren / Sand Spit</span>
+                                        <span id="lulc-barren-badge" class="dev-metric-badge" style="color:#E9B866;">--</span>
+                                    </div>
+                                    <div id="lulc-barren-val" class="dev-metric-val" style="color:#E9B866;">-- km²</div>
+                                    <div class="dev-metric-sub">Sediment Spit &amp; Beaches</div>
+                                </div>
+
+                                <div class="dev-metric-card">
+                                    <div class="dev-metric-header">
+                                        <span class="dev-metric-title">Built-up Area</span>
+                                        <span id="lulc-built-badge" class="dev-metric-badge" style="color:#FF8A80;">--</span>
+                                    </div>
+                                    <div id="lulc-built-val" class="dev-metric-val" style="color:#FF8A80;">-- km²</div>
+                                    <div class="dev-metric-sub">Coastal Settlements &amp; Roads</div>
+                                </div>
+                            </div>
+
+                            <!-- Timeseries Canvas Chart -->
+                            <div class="chart-box">
+                                <div class="chart-box-header">
+                                    <h4>LULC Class Area Quantification Chart (1989-2026)</h4>
+                                </div>
+                                <canvas id="lulc-chart-canvas" class="interactive-canvas"></canvas>
+                            </div>
+
+                            <!-- Data Table -->
+                            <div class="table-box">
+                                <div class="table-box-header">
+                                    <h4>Annual LULC Surface Area Quantification Data Table</h4>
+                                </div>
+                                <div class="table-scroll-wrap">
+                                    <table id="lulc-data-table" class="suvarna-table">
+                                        <thead>
+                                            <tr>
+                                                <th>Year</th>
+                                                <th>Vegetation Area (km²)</th>
+                                                <th>Water Body (km²)</th>
+                                                <th>Barren Spit (km²)</th>
+                                                <th>Built-up Area (km²)</th>
+                                                <th>Total Study Area</th>
+                                            </tr>
+                                        </thead>
+                                        <tbody></tbody>
+                                    </table>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </section>
+
+                <!-- ========================================================
+                     Page 2: Weather Data Analysis (view-weather)
+                     Matches weather_page.py with internal sidebar
+                     ======================================================== -->
+                <section id="view-weather" class="app-view stack-page">
+                    <div class="subpage-container">
+                        <!-- Navigation Sidebar -->
+                        <nav class="subpage-sidebar">
+                            <div style="font-size: 11px; font-weight: 800; color: var(--muted-sage); letter-spacing: 1.5px; padding: 4px 6px;">NAVIGATION</div>
+
+                            <button type="button" class="nav-sidebar-btn" onclick="navigateTo('home')">
+                                <div class="btn-icon">🏠</div>
+                                <div>
+                                    <div class="btn-title">Home</div>
+                                    <div class="btn-desc">Interactive Map</div>
+                                </div>
+                            </button>
+
+                            <button type="button" class="nav-sidebar-btn" onclick="navigateTo('river-mouth')">
+                                <div class="btn-icon">📷</div>
+                                <div>
+                                    <div class="btn-title">River Mouth</div>
+                                    <div class="btn-desc">Satellite Gallery</div>
+                                </div>
+                            </button>
+
+                            <button type="button" class="nav-sidebar-btn" onclick="navigateTo('lulc')">
+                                <div class="btn-icon">📊</div>
+                                <div>
+                                    <div class="btn-title">LULC Analysis</div>
+                                    <div class="btn-desc">4-Class Satellite</div>
+                                </div>
+                            </button>
+
+                            <button type="button" class="nav-sidebar-btn active" onclick="navigateTo('weather')">
+                                <div class="btn-icon">🌦</div>
+                                <div>
+                                    <div class="btn-title">Weather Data</div>
+                                    <div class="btn-desc">1989-2026 Climate</div>
+                                </div>
+                            </button>
+
+                            <button type="button" class="nav-sidebar-btn" onclick="navigateTo('deviation')">
+                                <div class="btn-icon">📈</div>
+                                <div>
+                                    <div class="btn-title">Deviation Report</div>
+                                    <div class="btn-desc">Morphodynamic Shift</div>
+                                </div>
+                            </button>
+
+                            <div style="flex: 1;"></div>
+
+                            <!-- Context Card -->
+                            <div style="background-color: var(--panel-surface); border: 1px solid var(--border-subtle); border-radius: 8px; padding: 8px;">
+                                <div style="font-size: 9px; font-weight: 800; color: var(--amber); letter-spacing: 0.5px;">METEOROLOGY</div>
+                                <div style="font-size: 10px; color: var(--muted-sage); margin-top: 3px; line-height: 1.3;">
+                                    Monsoon precipitation and temperature timeseries across coastal Udupi basin.
+                                </div>
+                            </div>
+                        </nav>
+
+                        <!-- Content Area -->
+                        <div class="subpage-content">
+                            <!-- Toolbar -->
+                            <div class="subpage-toolbar">
+                                <div>
+                                    <h2>Meteorological &amp; Precipitation Records</h2>
+                                    <p>Daily Historical Climate Metrics &amp; Monsoon Precipitation Patterns (1989-2026)</p>
+                                </div>
+                                <div class="toolbar-controls">
+                                    <!-- Year Range Filter Box (Synchronized with selected years) -->
+                                    <div style="display: flex; align-items: center; gap: 6px; background: var(--dark-emerald); border: 1px solid var(--border-color); border-radius: 6px; padding: 4px 10px;">
+                                        <span style="font-size: 11px; color: var(--muted-sage); font-weight: 600;">Year Range:</span>
+                                        <select id="weather-start-year" style="width: 72px; padding: 2px 4px; font-size: 11px; height: 26px;"></select>
+                                        <span style="color: var(--mint); font-weight: 700;">&rarr;</span>
+                                        <select id="weather-end-year" style="width: 72px; padding: 2px 4px; font-size: 11px; height: 26px;"></select>
+                                        <button type="button" id="btn-weather-reset" class="btn-panel-action muted" style="height: 26px; padding: 2px 8px; font-size: 10px;" title="Reset to Home selected years">Reset</button>
+                                    </div>
+
+                                    <!-- Chart Mode Selector Buttons -->
+                                    <div style="display: flex; gap: 4px; background: var(--dark-emerald); padding: 2px; border-radius: 6px; border: 1px solid var(--border-color);">
+                                        <button type="button" class="mode-btn weather-mode-btn active" data-mode="rain" style="height:26px; font-size:10px;">Precipitation</button>
+                                        <button type="button" class="mode-btn weather-mode-btn" data-mode="temp" style="height:26px; font-size:10px;">Temperature</button>
+                                        <button type="button" class="mode-btn weather-mode-btn" data-mode="hum" style="height:26px; font-size:10px;">Humidity</button>
+                                        <button type="button" class="mode-btn weather-mode-btn" data-mode="all" style="height:26px; font-size:10px;">Combined</button>
+                                    </div>
+
+                                    <!-- Export CSV for Selected Years -->
+                                    <a id="btn-download-weather-csv" href="/api/weather/export/csv" download="Suvarna_Weather_Dataset.csv" class="btn-panel-action" style="text-decoration:none; height:30px; padding: 0 12px; font-size: 11px;">
+                                        Export CSV &darr;
+                                    </a>
+                                </div>
+                            </div>
+
+                            <!-- Summary Statistics Bar for Selected Years -->
+                            <div class="metric-cards-row">
+                                <div class="dev-metric-card" style="padding: 10px 14px;">
+                                    <div class="dev-metric-header">
+                                        <span class="dev-metric-title">Selected Observation Period</span>
+                                        <span id="weather-stat-period-badge" class="dev-metric-badge">-- Years</span>
+                                    </div>
+                                    <div id="weather-stat-period" class="dev-metric-val" style="font-size: 17px; margin-top: 4px;">-- – --</div>
+                                    <div class="dev-metric-sub">User-selected analysis interval</div>
+                                </div>
+
+                                <div class="dev-metric-card" style="padding: 10px 14px;">
+                                    <div class="dev-metric-header">
+                                        <span class="dev-metric-title">Mean Annual Rainfall</span>
+                                        <span class="dev-metric-badge" style="color:var(--teal);">IMD/ERA5</span>
+                                    </div>
+                                    <div id="weather-stat-rain" class="dev-metric-val" style="font-size: 17px; margin-top: 4px; color: var(--teal);">-- mm/yr</div>
+                                    <div class="dev-metric-sub">Mean precipitation in selection</div>
+                                </div>
+
+                                <div class="dev-metric-card" style="padding: 10px 14px;">
+                                    <div class="dev-metric-header">
+                                        <span class="dev-metric-title">Mean Temperature</span>
+                                        <span class="dev-metric-badge" style="color:var(--amber);">Coastal Mean</span>
+                                    </div>
+                                    <div id="weather-stat-temp" class="dev-metric-val" style="font-size: 17px; margin-top: 4px; color: var(--amber);">-- °C</div>
+                                    <div class="dev-metric-sub">Mean surface air temperature</div>
+                                </div>
+
+                                <div class="dev-metric-card" style="padding: 10px 14px;">
+                                    <div class="dev-metric-header">
+                                        <span class="dev-metric-title">Mean Relative Humidity</span>
+                                        <span class="dev-metric-badge" style="color:var(--mint);">Marine Influence</span>
+                                    </div>
+                                    <div id="weather-stat-hum" class="dev-metric-val" style="font-size: 17px; margin-top: 4px; color: var(--mint);">-- %</div>
+                                    <div class="dev-metric-sub">Mean relative humidity in selection</div>
+                                </div>
+                            </div>
+
+                            <!-- Weather Canvas Chart -->
+                            <div class="chart-box">
+                                <div class="chart-box-header">
+                                    <h4 id="weather-chart-title">Annual Precipitation (Selected Years)</h4>
+                                    <span id="weather-chart-legend" style="font-size: 11px; color: var(--muted-sage);">● Teal Bars: Annual Rain (mm) | --- Amber: Period Mean Baseline</span>
+                                </div>
+                                <canvas id="weather-chart-canvas" class="interactive-canvas"></canvas>
+                            </div>
+
+                            <!-- Weather Table -->
+                            <div class="table-box">
+                                <div class="table-box-header">
+                                    <h4 id="weather-table-title">Annual Meteorological Records for Selected Years</h4>
+                                </div>
+                                <div class="table-scroll-wrap">
+                                    <table id="weather-data-table" class="suvarna-table">
+                                        <thead>
+                                            <tr>
+                                                <th>Year</th>
+                                                <th>Mean Temp (°C)</th>
+                                                <th>Temperature Range</th>
+                                                <th>Mean Humidity (%)</th>
+                                                <th>Annual Rainfall (mm)</th>
+                                                <th>Monsoon Rainfall (mm)</th>
+                                                <th>Data Status</th>
+                                            </tr>
+                                        </thead>
+                                        <tbody></tbody>
+                                    </table>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </section>
+
+                <!-- ========================================================
+                     Page 3: About Page (view-about)
+                     Matches about_page.py with Top "← Back to Map" Bar
+                     ======================================================== -->
+                <section id="view-about" class="app-view stack-page">
+                    <div style="display: flex; flex-direction: column; width: 100%; height: 100%; padding: 20px 24px; gap: 16px; overflow-y: auto;">
+                        <!-- Top Bar with Back Button -->
+                        <div style="display: flex; align-items: center; justify-content: space-between; border-bottom: 1px solid var(--border-color); padding-bottom: 12px;">
+                            <button type="button" class="btn-panel-action" onclick="navigateTo('home')" style="width: auto; padding: 6px 16px; font-size: 13px; font-weight: 700;">
+                                &larr; Back to Map View
+                            </button>
+                            <h2 style="font-size: 18px; font-weight: 800; color: var(--warm-ivory);">About Suvarna River Prediction System</h2>
+                            <span style="font-size: 11px; color: var(--mint); background: var(--dark-emerald); padding: 4px 10px; border-radius: 4px; border: 1px solid var(--border-color);">v2.4.0-web</span>
+                        </div>
+
+                        <!-- Info Grid -->
+                        <div style="display: grid; grid-template-columns: repeat(2, 1fr); gap: 16px;">
+                            <div class="table-box">
+                                <h4 style="color: var(--mint); margin-bottom: 6px;">Institution &amp; Research Lab</h4>
+                                <p style="font-size: 12px; color: var(--warm-ivory); line-height: 1.6;">
+                                    <b>National Institute of Technology Karnataka (NITK Surathkal)</b><br />
+                                    Department of Applied Mechanics and Hydraulics<br />
+                                    Remote Sensing &amp; Coastal GIS Laboratory<br />
+                                    Study Area: Kodi Bengre, Udupi District, Karnataka, India
+                                </p>
+                            </div>
+
+                            <div class="table-box">
+                                <h4 style="color: var(--mint); margin-bottom: 6px;">Scientific Objective</h4>
+                                <p style="font-size: 12px; color: var(--warm-ivory); line-height: 1.6;">
+                                    Quantifying multi-decadal river-mouth channel migration, sand spit breaching, and inlet path deviations
+                                    for the Suvarna-Sita estuarine system using historical satellite imagery (1989-2026) and deep learning morphodynamic models.
+                                </p>
+                            </div>
+
+                            <div class="table-box">
+                                <h4 style="color: var(--mint); margin-bottom: 6px;">Satellite Data Sources</h4>
+                                <p style="font-size: 12px; color: var(--warm-ivory); line-height: 1.6;">
+                                    &bull; Landsat 5 TM (1989-2011)<br />
+                                    &bull; Landsat 7 ETM+ (1999-2022)<br />
+                                    &bull; Landsat 8/9 OLI/TIRS (2013-2026)<br />
+                                    &bull; Copernicus Sentinel-2 MSI (10m Resolution)<br />
+                                    &bull; Coordinate System: EPSG:32643 (WGS 84 / UTM zone 43N)
+                                </p>
+                            </div>
+
+                            <div class="table-box">
+                                <h4 style="color: var(--mint); margin-bottom: 6px;">Methodology &amp; Architecture</h4>
+                                <p style="font-size: 12px; color: var(--warm-ivory); line-height: 1.6;">
+                                    &bull; Automated Water Masking via Modified NDWI (MNDWI)<br />
+                                    &bull; Throat Centroid &amp; Boundary Deviation Calculation<br />
+                                    &bull; Euclidean Displacement &amp; Cardinal Bearing Estimation<br />
+                                    &bull; 4-Class LULC Surface Area Quantification<br />
+                                    &bull; Monsoonal Runoff &amp; Climate Correlation
+                                </p>
+                            </div>
+                        </div>
+                    </div>
+                </section>
+
+                <!-- ========================================================
+                     Page 6: Settings Page (view-settings)
+                     Matches settings_page.py with Top "← Back to Map" Bar
+                     ======================================================== -->
+                <section id="view-settings" class="app-view stack-page">
+                    <div style="display: flex; flex-direction: column; width: 100%; height: 100%; padding: 20px 24px; gap: 16px; overflow-y: auto;">
+                        <!-- Top Bar with Back Button -->
+                        <div style="display: flex; align-items: center; justify-content: space-between; border-bottom: 1px solid var(--border-color); padding-bottom: 12px;">
+                            <button type="button" class="btn-panel-action" onclick="navigateTo('home')" style="width: auto; padding: 6px 16px; font-size: 13px; font-weight: 700;">
+                                &larr; Back to Map View
+                            </button>
+                            <h2 style="font-size: 18px; font-weight: 800; color: var(--warm-ivory);">System Configuration &amp; GIS Parameters</h2>
+                            <span style="font-size: 11px; color: var(--muted-sage);">Configuration Management</span>
+                        </div>
+
+                        <!-- Settings Grid -->
+                        <div style="display: grid; grid-template-columns: repeat(2, 1fr); gap: 16px;">
+                            <div class="table-box">
+                                <h4 style="color: var(--mint); margin-bottom: 8px;">Spatial &amp; Geodetic Reference</h4>
+                                <div style="display: flex; flex-direction: column; gap: 8px;">
+                                    <div>
+                                        <div class="form-field-label">Active Coordinate Reference System (CRS)</div>
+                                        <input type="text" value="EPSG:32643 (WGS 84 / UTM Zone 43N)" readonly />
+                                    </div>
+                                    <div>
+                                        <div class="form-field-label">Geographic Display CRS</div>
+                                        <input type="text" value="EPSG:4326 (WGS 84 Decimal Degrees)" readonly />
+                                    </div>
+                                </div>
+                            </div>
+
+                            <div class="table-box">
+                                <h4 style="color: var(--mint); margin-bottom: 8px;">API &amp; Backend Server</h4>
+                                <div style="display: flex; flex-direction: column; gap: 8px;">
+                                    <div>
+                                        <div class="form-field-label">Backend Host &amp; Port</div>
+                                        <input type="text" value="http://127.0.0.1:8000 (FastAPI Server)" readonly />
+                                    </div>
+                                    <div>
+                                        <div class="form-field-label">Database Path</div>
+                                        <input type="text" value="data/auth.db (SQLite with PBKDF2 Hashing)" readonly />
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </section>
+
+            </main>
+
+            <!-- ------------------------------------------------------------
+                 Bottom Status Bar (build_status_bar, height: 32px)
+                 ------------------------------------------------------------ -->
+            <footer id="bottom-status-bar">
+                <div class="status-indicator-box">
+                    <span id="status-dot">&#9679;</span>
+                    <span id="status-map-text">Map Ready</span>
+                </div>
+
+                <span class="status-pipe">|</span>
+                <span id="status-mode-pill">Mode: OpenStreetMap Standard</span>
+
+                <span class="status-pipe">|</span>
+                <span id="status-study-area">Study Area: Kodi Bengre, Udupi</span>
+
+                <div class="banner-spacer"></div>
+
+                <span id="status-readiness">Analysis: Ready for AOI selection</span>
+                <span class="status-pipe">|</span>
+                <span id="status-data">Data: Landsat Multi-Spectral (1989-2026)</span>
+            </footer>
+
+        </div>
+    </div>
+
+    <!-- Leaflet & Leaflet Draw Vendor Scripts -->
+    <script src="/static/vendor/leaflet/leaflet.js" onerror="this.onerror=null;this.src='https://unpkg.com/leaflet@1.9.4/dist/leaflet.js';"></script>
+    <script src="/static/vendor/leaflet-draw/leaflet.draw.js" onerror="this.onerror=null;this.src='https://cdnjs.cloudflare.com/ajax/libs/leaflet.draw/1.0.4/leaflet.draw.js';"></script>
+
+    <!-- Map Leaflet Engine -->
+    <script src="/static/js/script.js"></script>
+
+    <!-- Application Dashboard SPA Controller -->
+    <script src="/static/js/app.js"></script>
+
+</body>
+
+</html>
