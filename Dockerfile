@@ -5,7 +5,7 @@ WORKDIR /app
 
 ENV PYTHONUNBUFFERED=1 \
     PYTHONDONTWRITEBYTECODE=1 \
-    PORT=7860
+    PORT=10000
 
 # Install system utilities
 RUN apt-get update && apt-get install -y --no-install-recommends \
@@ -30,6 +30,6 @@ COPY web_app/ web_app/
 RUN chown -R appuser:appuser /app
 USER appuser
 
-EXPOSE 7860 10000
+EXPOSE 10000
 
-CMD ["sh", "-c", "uvicorn web_app.main:app --host 0.0.0.0 --port ${PORT:-7860}"]
+CMD ["sh", "-c", "uvicorn web_app.main:app --host 0.0.0.0 --port ${PORT:-10000}"]

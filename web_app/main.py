@@ -4,21 +4,38 @@ Path Deviation Prediction System
 """
 
 import os
+import sys
 import io
 import csv
 from typing import Optional, Dict, Any
+
+# Ensure web_app and project directories are in sys.path
+_current_dir = os.path.dirname(os.path.abspath(__file__))
+_root_dir = os.path.dirname(_current_dir)
+for _p in [_current_dir, _root_dir]:
+    if _p not in sys.path:
+        sys.path.insert(0, _p)
+
 from fastapi import FastAPI, HTTPException, Header, Query, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse, StreamingResponse, JSONResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
 
-from backend.dataset_config import dataset_config
-from backend.auth_service import auth_service
-from backend.weather_service import weather_service
-from backend.deviation_service import deviation_service
-from backend.lulc_service import lulc_service
-from backend.data_service import data_service
+try:
+    from backend.dataset_config import dataset_config
+    from backend.auth_service import auth_service
+    from backend.weather_service import weather_service
+    from backend.deviation_service import deviation_service
+    from backend.lulc_service import lulc_service
+    from backend.data_service import data_service
+except ImportError:
+    from web_app.backend.dataset_config import dataset_config
+    from web_app.backend.auth_service import auth_service
+    from web_app.backend.weather_service import weather_service
+    from web_app.backend.deviation_service import deviation_service
+    from web_app.backend.lulc_service import lulc_service
+    from web_app.backend.data_service import data_service
 
 app = FastAPI(
     title="Estuarine Mouth Dynamics - Path Deviation Prediction System",
