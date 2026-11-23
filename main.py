@@ -28,6 +28,12 @@ qt_dir = os.path.join(os.path.dirname(os.path.abspath(__file__)), "qt_version")
 if qt_dir not in sys.path:
     sys.path.insert(0, qt_dir)
 
+# ASGI Application instance for cloud deployment (e.g. uvicorn main:app)
+try:
+    from web_app.main import app
+except Exception:
+    pass
+
 if __name__ == "__main__":
     from app import main
     sys.exit(main())
