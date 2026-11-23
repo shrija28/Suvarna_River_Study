@@ -23,8 +23,10 @@ RUN useradd -m -u 1000 appuser
 COPY data/ data/
 COPY assets/ assets/
 COPY SuvarnaProject_data/ SuvarnaProject_data/
-COPY config.json config.json
 COPY web_app/ web_app/
+
+# Ensure config.json is present
+COPY config.json* /app/
 
 # Ensure non-root user has full write permissions to SQLite and working files
 RUN chown -R appuser:appuser /app

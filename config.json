@@ -1,0 +1,8 @@
+{
+    "data_root": "data",
+    "project_data_root": "SuvarnaProject_data",
+    "crs": "EPSG:32643",
+    "study_area": "Kodi Bengre, Udupi, Karnataka, India",
+    "center": [13.4380, 74.6980],
+    "default_zoom": 13
+}
