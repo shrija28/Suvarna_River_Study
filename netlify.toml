@@ -1,0 +1,28 @@
+# Netlify hosts only the static web frontend (web_app/static).
+# The FastAPI backend (web_app/main.py) runs elsewhere (e.g. Render) and
+# Netlify proxies /api/* requests to it.
+#
+# The base directory is set to web_app/static so Netlify does not try to
+# install the desktop Python requirements (PySide6, rasterio, ...) from the
+# repository root.
+
+[build]
+  base = "web_app/static"
+  publish = "."
+  # Copy the shared logo/banner images into the published site.
+  command = "rm -rf assets && cp -r ../../assets ./assets"
+
+# The page references /static/css, /static/js and /static/vendor;
+# serve them from the published root.
+[[redirects]]
+  from = "/static/*"
+  to = "/:splat"
+  status = 200
+
+# Proxy all API calls to the FastAPI backend.
+# Replace this URL with the address of your deployed backend.
+[[redirects]]
+  from = "/api/*"
+  to = "https://suvarna-nadi-prediction.onrender.com/api/:splat"
+  status = 200
+  force = true
